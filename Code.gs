@@ -52,12 +52,12 @@ function save_(b) {
   const pays = sheet_('Payments', PAY_HEAD);
   const recs = sheet_('Records', REC_HEAD);
 
-  // the first payment recorded for a customer is the deposit; later ones are plain payments
-  const hasPayment = pays.getDataRange().getValues().slice(1).some(r => r[1] === b.id);
-  if (b.payment && b.payment.amount > 0) {
-    pays.appendRow([String(b.payment.date), b.id, b.mommy, b.room, Number(b.payment.amount),
-                    hasPayment ? 'Payment' : 'Deposit', b.payment.by, new Date()]);
-  }
+  // each payment is typed 'Deposit' or 'Payment' by the calculator
+  (b.payments || []).forEach(p => {
+    if (p.amount > 0) {
+      pays.appendRow([String(p.date), b.id, b.mommy, b.room, Number(p.amount), p.type, p.by, new Date()]);
+    }
+  });
 
   // deposit = the Deposit payment; paid = sum of all of this record's payments
   let paid = 0, deposit = 0;

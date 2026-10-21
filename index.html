@@ -99,7 +99,7 @@
       </div>
       <div class="line"><span>Discount</span><span id="tDisc"></span></div>
       <div class="line total"><span>Total amount</span><span id="tAll"></span></div>
-      <div class="line"><span>Deposit paid</span><span id="tDep"></span></div>
+      <div style="margin-top:8px"><label for="dep" class="s">Deposit paid (RM)</label><input id="dep" type="number" min="0" step="0.01" placeholder="0.00"></div>
       <div class="line"><span>Paid so far</span><span id="tPaid"></span></div>
       <div style="margin-top:8px">
         <label for="paid" class="s">Payment now (RM)</label>
@@ -207,11 +207,10 @@ function calc() {
   const disc = Math.min(num($("disc")), pkgTotal + add + addSst);
   const total = pkgTotal + add + addSst - disc;
   $("tDisc").textContent = disc ? "- " + rm(disc) : rm(0);
-  const paid = paidSoFar + num($("paid"));
+  const dep = depositSoFar || num($("dep"));
+  const paid = paidSoFar + (depositSoFar ? 0 : num($("dep"))) + num($("paid"));
   ctx = { pname, total, disc, itemsText: lines.map(l=>`${l[0]}: ${rm(l[1])}`).join("; ") };
   $("tPaid").textContent = rm(paidSoFar);
-  const dep = depositSoFar || (paidSoFar === 0 ? num($("paid")) : 0); // first payment counts as the deposit
-  $("tDep").textContent = rm(dep);
   $("lines").innerHTML =
     `<div class="line"><span>${pname}</span><span>${rm(pkgTotal)}</span></div>` +
     lines.map(l=>`<div class="line sub"><span>${l[0]}</span><span>${rm(l[1])}</span></div>`).join("");
@@ -277,17 +276,23 @@ $("sync").onchange = async () => {
   const fail = m => { $("sync").checked = false; setStatus(m, true); };
   const mommy = $("mommy").value.trim(), pay = num($("paid"));
   if (!mommy) return fail("Enter Mommy Name first");
-  if (pay > 0 && !$("payBy").value.trim()) return fail("Enter who collected the payment");
-  if (pay > 0 && !$("payDate").value) return fail("Enter the payment date");
+  const newDep = depositSoFar ? 0 : num($("dep"));
+  const info = { date: $("payDate").value, by: $("payBy").value.trim() };
+  const payments = [];
+  if (newDep > 0) payments.push({ ...info, amount: newDep, type: "Deposit" });
+  if (pay > 0) payments.push({ ...info, amount: pay, type: "Payment" });
+  if (payments.length && !info.by) return fail("Enter who collected the payment");
+  if (payments.length && !info.date) return fail("Enter the payment date");
   if (!recordId) recordId = "SP-" + Date.now().toString(36).toUpperCase();
   setStatus("Saving…");
   try {
     const j = await api("POST", {
       action: "save", id: recordId, mommy, room: $("room").value.trim(), pkg: ctx.pname,
       items: ctx.itemsText, discount: ctx.disc, total: ctx.total, data: JSON.stringify(getState()),
-      payment: pay > 0 ? { amount: pay, date: $("payDate").value, by: $("payBy").value.trim() } : null,
+      payments,
     });
     paidSoFar = j.paid; depositSoFar = j.deposit || 0; $("paid").value = "";
+    $("dep").value = depositSoFar || ""; $("dep").readOnly = depositSoFar > 0;
     calc(); setStatus(`Saved ✔ ${recordId} · ${j.status}`);
   } catch (err) { fail("Save failed: " + err.message); }
 };
@@ -327,7 +332,8 @@ $("recList").onclick = e => {
   const el = e.target.closest(".rec"); if (!el) return;
   const r = records[el.dataset.i];
   try { setState(JSON.parse(r.data)); } catch { return setStatus("Could not read that record", true); }
-  recordId = r.id; paidSoFar = +r.paid || 0; depositSoFar = +r.deposit || 0; $("paid").value = ""; $("sync").checked = false;
+  recordId = r.id; paidSoFar = +r.paid || 0; depositSoFar = +r.deposit || 0; $("paid").value = "";
+  $("dep").value = depositSoFar || ""; $("dep").readOnly = depositSoFar > 0; $("sync").checked = false;
   closeModal(); calc(); setStatus(`Loaded ${r.id} · enter payment, then tick Save to sheet`);
 };
 $("copy").onclick = async () => {
@@ -338,7 +344,7 @@ $("copy").onclick = async () => {
 $("reset").onclick = () => {
   document.querySelectorAll("main input, aside input").forEach(i => i.value = "");
   $("pkg").value = 0; $("upg").value = 0; $("sync").checked = false;
-  recordId = ""; paidSoFar = 0; depositSoFar = 0; $("payDate").value = today(); $("payBy").value = store.get("payBy");
+  recordId = ""; paidSoFar = 0; depositSoFar = 0; $("dep").readOnly = false; $("payDate").value = today(); $("payBy").value = store.get("payBy");
   setStatus(""); calc();
 };
 calc();
