@@ -128,6 +128,8 @@
   <div class="card" id="recPanel" hidden>
     <h2>Saved records</h2>
     <input id="recSearch" type="search" placeholder="Search name or room…">
+    <div class="two"><button id="fUnpaid" type="button" style="margin:0">Unpaid</button><button id="fAll" type="button" class="ghost" style="margin:0">All</button></div>
+    <div id="recSum" class="line sub"></div>
     <div id="recList"></div>
     <button class="ghost closeM">Close</button>
   </div>
@@ -291,6 +293,10 @@ $("sync").onchange = async () => {
       items: ctx.itemsText, discount: ctx.disc, total: ctx.total, data: JSON.stringify(getState()),
       payments,
     });
+    const expected = paidSoFar + payments.reduce((s, p) => s + p.amount, 0);
+    if ((j.paid || 0) < expected - 0.005) { // an outdated Apps Script ignores the payments array
+      return fail("Record saved, but the payment was NOT recorded. Paste the latest Code.gs into Apps Script and deploy a new version.");
+    }
     paidSoFar = j.paid; depositSoFar = j.deposit || 0; $("paid").value = "";
     $("dep").value = depositSoFar || ""; $("dep").readOnly = depositSoFar > 0;
     calc(); setStatus(`Saved ✔ ${recordId} · ${j.status}`);
@@ -312,18 +318,26 @@ let records = [];
 function renderRecs() {
   const q = $("recSearch").value.trim().toLowerCase();
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const list = records.filter(r => !q || (r.mommy + " " + r.room).toLowerCase().includes(q));
+  const owing = r => (+r.balance || 0) > 0;
+  const list = records.filter(r => (recFilter === "all" || owing(r)) && (!q || (r.mommy + " " + r.room).toLowerCase().includes(q)));
+  const unpaid = records.filter(owing);
+  $("fUnpaid").className = recFilter === "all" ? "ghost" : ""; $("fAll").className = recFilter === "all" ? "" : "ghost";
+  $("fUnpaid").textContent = `Unpaid (${unpaid.length})`;
+  $("recSum").innerHTML = `<span>Outstanding balance</span><b>${rm(unpaid.reduce((s, r) => s + (+r.balance || 0), 0))}</b>`;
   $("recList").innerHTML = list.map((r, i) => `
     <div class="rec" data-i="${records.indexOf(r)}">
       <span class="badge" style="color:${r.status === "Paid" ? "#2a9d4b" : "var(--pink)"}">${esc(r.status)}</span>
       <b>${esc(r.mommy)}</b> · Room ${esc(r.room)}
-      <small>${esc(r.pkg)} · Total ${rm(+r.total || 0)} · Balance ${rm(+r.balance || 0)}</small>
+      <small>${esc(r.pkg)} · Total ${rm(+r.total || 0)} · Deposit ${rm(+r.deposit || 0)} · Balance ${rm(+r.balance || 0)}</small>
     </div>`).join("") || `<p class="line sub">No records found.</p>`;
 }
+let recFilter = "unpaid"; // opens on customers who still owe a balance
 $("recSearch").oninput = renderRecs;
+$("fUnpaid").onclick = () => { recFilter = "unpaid"; renderRecs(); };
+$("fAll").onclick = () => { recFilter = "all"; renderRecs(); };
 $("recsBtn").onclick = async () => {
   try {
-    $("recList").innerHTML = `<p class="line sub">Loading…</p>`; $("recSearch").value = "";
+    $("recList").innerHTML = `<p class="line sub">Loading…</p>`; $("recSearch").value = ""; recFilter = "unpaid";
     openPanel("recPanel");
     records = (await api("GET", null, "action=list")).records; renderRecs();
   } catch (err) { $("recList").innerHTML = `<p style="color:#d33">${err.message}</p>`; }
