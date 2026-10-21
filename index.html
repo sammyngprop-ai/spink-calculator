@@ -29,11 +29,28 @@
   #mommy, #room { color:var(--pink); font-weight:800; font-size:18px; }
   button { width:100%; margin-top:12px; padding:10px; font:inherit; background:var(--pink); color:#fff; border:0; border-radius:8px; cursor:pointer; }
   button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); margin-top:8px; }
+  header { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .hbtns { display:flex; gap:8px; } .hbtns button { width:auto; margin:0; padding:8px 12px; }
+  .summary .card { position:relative; }
+  .tick { position:absolute; top:12px; right:12px; display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:var(--pink); cursor:pointer; }
+  .tick input { width:22px; height:22px; accent-color:var(--pink); margin:0; }
+  #status { font-size:13px; color:var(--muted); min-height:18px; margin-top:6px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+  label.s { color:var(--muted); font-size:13px; display:block; }
+  #modal { position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; align-items:flex-start; justify-content:center; padding:16px; overflow:auto; z-index:10; }
+  #modal .card { width:100%; max-width:560px; margin:0; }
+  .rec { padding:10px; border:1px solid var(--line); border-radius:8px; margin-top:8px; cursor:pointer; }
+  .rec:hover { border-color:var(--pink); }
+  .rec b { color:var(--pink); } .rec small { color:var(--muted); display:block; }
+  .badge { float:right; font-size:12px; font-weight:700; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header><h1>Spink Calculator <small>Package &amp; add-on service calculator (RM)</small></h1></header>
+  <header>
+    <h1>Spink Calculator <small>Package &amp; add-on service calculator (RM)</small></h1>
+    <div class="hbtns"><button id="recsBtn">Records</button><button id="cfgBtn" class="ghost">⚙ Sheet</button></div>
+  </header>
 
   <main>
     <div class="card" style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
@@ -70,6 +87,7 @@
 
   <aside class="summary">
     <div class="card">
+      <label class="tick" title="Confirm and save to Google Sheet"><input type="checkbox" id="sync"> Save to sheet</label>
       <h2>Summary</h2>
       <div id="lines"></div>
       <div class="line"><span>Package total (incl. SST)</span><span id="tPkg"></span></div>
@@ -81,15 +99,39 @@
       </div>
       <div class="line"><span>Discount</span><span id="tDisc"></span></div>
       <div class="line total"><span>Total amount</span><span id="tAll"></span></div>
-      <div style="margin-top:12px">
-        <label for="paid" style="color:var(--muted);font-size:13px">Amount paid (RM)</label>
+      <div class="line"><span>Paid so far</span><span id="tPaid"></span></div>
+      <div style="margin-top:8px">
+        <label for="paid" class="s">Payment now (RM)</label>
         <input id="paid" type="number" min="0" step="0.01" placeholder="0.00">
       </div>
+      <div class="two">
+        <div><label for="payDate" class="s">Payment date</label><input id="payDate" type="date"></div>
+        <div><label for="payBy" class="s">Collected by</label><input id="payBy" type="text" placeholder="Name"></div>
+      </div>
       <div class="line total balance"><span>Balance</span><span id="bal"></span></div>
+      <div id="status"></div>
       <button id="copy">Copy summary</button>
       <button id="reset" class="ghost">Reset</button>
     </div>
   </aside>
+</div>
+
+<div id="modal">
+  <div class="card" id="cfgPanel" hidden>
+    <h2>Google Sheet setup</h2>
+    <label class="s" for="sheetUrl">Web App URL</label>
+    <input id="sheetUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+    <label class="s" for="sheetKey" style="margin-top:8px">Secret key</label>
+    <input id="sheetKey" type="text" placeholder="Same key as in the Apps Script">
+    <button id="cfgSave">Save</button>
+    <button class="ghost closeM">Close</button>
+  </div>
+  <div class="card" id="recPanel" hidden>
+    <h2>Saved records</h2>
+    <input id="recSearch" type="search" placeholder="Search name or room…">
+    <div id="recList"></div>
+    <button class="ghost closeM">Close</button>
+  </div>
 </div>
 
 <script>
@@ -134,7 +176,7 @@ $("others").innerHTML = OTHERS.map((o,i)=>`
     <input type="number" min="0" step="1" data-oq="${i}" placeholder="1">
   </div>`).join("");
 
-let summaryText = "";
+let summaryText = "", recordId = "", paidSoFar = 0, ctx = null;
 const wb = s => s ? `*${s}*` : s; // WhatsApp bold
 function calc() {
   const [pname, pprice, psst] = PACKAGES[$("pkg").value];
@@ -166,7 +208,9 @@ function calc() {
   const disc = Math.min(num($("disc")), pkgTotal + add + addSst);
   const total = pkgTotal + add + addSst - disc;
   $("tDisc").textContent = disc ? "- " + rm(disc) : rm(0);
-  const paid = num($("paid"));
+  const paid = paidSoFar + num($("paid"));
+  ctx = { pname, total, disc, itemsText: lines.map(l=>`${l[0]}: ${rm(l[1])}`).join("; ") };
+  $("tPaid").textContent = rm(paidSoFar);
   $("lines").innerHTML =
     `<div class="line"><span>${pname}</span><span>${rm(pkgTotal)}</span></div>` +
     lines.map(l=>`<div class="line sub"><span>${l[0]}</span><span>${rm(l[1])}</span></div>`).join("");
@@ -181,15 +225,122 @@ function calc() {
     ...(disc ? [`Discount: -${rm(disc)}`] : []), `Total: ${rm(total)}`, `Paid: ${rm(paid)}`, `Balance: ${wb(rm(total - paid))}`].join("\n");
 }
 
-document.addEventListener("input", calc);
-$("pkg").addEventListener("change", calc);
-$("upg").addEventListener("change", calc);
+const store = {
+  get: k => { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+};
+const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const setStatus = (msg, bad) => { $("status").textContent = msg; $("status").style.color = bad ? "#d33" : ""; };
+$("payDate").value = today();
+$("payBy").value = store.get("payBy");
+
+// editing after saving un-ticks the box, so the sheet is only updated by an explicit tick
+function onEdit(e) {
+  if (!e.target.closest("main, aside") || e.target.id === "sync") return;
+  if (e.target.id === "payBy") store.set("payBy", e.target.value.trim());
+  if ($("sync").checked) { $("sync").checked = false; setStatus("Changed — tick again to update the sheet"); }
+  calc();
+}
+document.addEventListener("input", onEdit);
+$("pkg").addEventListener("change", onEdit);
+$("upg").addEventListener("change", onEdit);
+
+const getState = () => ({
+  mommy: $("mommy").value, room: $("room").value, pkg: $("pkg").value, upg: $("upg").value, disc: $("disc").value,
+  a: [...document.querySelectorAll("[data-a]")].map(e => e.value),
+  op: [...document.querySelectorAll("[data-op]")].map(e => e.value),
+  oq: [...document.querySelectorAll("[data-oq]")].map(e => e.value),
+  pn: document.querySelector("[data-pn]").value,
+});
+function setState(s) {
+  ["mommy", "room", "pkg", "upg", "disc"].forEach(k => $(k).value = s[k] ?? "");
+  document.querySelectorAll("[data-a]").forEach((e, i) => e.value = s.a?.[i] ?? "");
+  document.querySelectorAll("[data-op]").forEach((e, i) => e.value = s.op?.[i] ?? "");
+  document.querySelectorAll("[data-oq]").forEach((e, i) => e.value = s.oq?.[i] ?? "");
+  document.querySelector("[data-pn]").value = s.pn ?? "";
+}
+
+async function api(method, body, query) {
+  const url = store.get("sheetUrl");
+  if (!url) { openPanel("cfgPanel"); throw new Error("Set up the Google Sheet first"); }
+  const key = store.get("sheetKey");
+  const res = method === "GET"
+    ? await fetch(`${url}?key=${encodeURIComponent(key)}&${query}`)
+    : await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, key }) });
+  const j = await res.json();
+  if (!j.ok) throw new Error(j.error || "Sheet error");
+  return j;
+}
+
+$("sync").onchange = async () => {
+  if (!$("sync").checked) return;
+  const fail = m => { $("sync").checked = false; setStatus(m, true); };
+  const mommy = $("mommy").value.trim(), pay = num($("paid"));
+  if (!mommy) return fail("Enter Mommy Name first");
+  if (pay > 0 && !$("payBy").value.trim()) return fail("Enter who collected the payment");
+  if (pay > 0 && !$("payDate").value) return fail("Enter the payment date");
+  if (!recordId) recordId = "SP-" + Date.now().toString(36).toUpperCase();
+  setStatus("Saving…");
+  try {
+    const j = await api("POST", {
+      action: "save", id: recordId, mommy, room: $("room").value.trim(), pkg: ctx.pname,
+      items: ctx.itemsText, discount: ctx.disc, total: ctx.total, data: JSON.stringify(getState()),
+      payment: pay > 0 ? { amount: pay, date: $("payDate").value, by: $("payBy").value.trim() } : null,
+    });
+    paidSoFar = j.paid; $("paid").value = "";
+    calc(); setStatus(`Saved ✔ ${recordId} · ${j.status}`);
+  } catch (err) { fail("Save failed: " + err.message); }
+};
+
+const openPanel = id => {
+  $("cfgPanel").hidden = id !== "cfgPanel"; $("recPanel").hidden = id !== "recPanel";
+  $("modal").style.display = "flex";
+};
+const closeModal = () => $("modal").style.display = "none";
+document.querySelectorAll(".closeM").forEach(b => b.onclick = closeModal);
+$("modal").onclick = e => { if (e.target === $("modal")) closeModal(); };
+
+$("cfgBtn").onclick = () => { $("sheetUrl").value = store.get("sheetUrl"); $("sheetKey").value = store.get("sheetKey"); openPanel("cfgPanel"); };
+$("cfgSave").onclick = () => { store.set("sheetUrl", $("sheetUrl").value.trim()); store.set("sheetKey", $("sheetKey").value.trim()); closeModal(); setStatus("Sheet settings saved"); };
+
+let records = [];
+function renderRecs() {
+  const q = $("recSearch").value.trim().toLowerCase();
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const list = records.filter(r => !q || (r.mommy + " " + r.room).toLowerCase().includes(q));
+  $("recList").innerHTML = list.map((r, i) => `
+    <div class="rec" data-i="${records.indexOf(r)}">
+      <span class="badge" style="color:${r.status === "Paid" ? "#2a9d4b" : "var(--pink)"}">${esc(r.status)}</span>
+      <b>${esc(r.mommy)}</b> · Room ${esc(r.room)}
+      <small>${esc(r.pkg)} · Total ${rm(+r.total || 0)} · Balance ${rm(+r.balance || 0)}</small>
+    </div>`).join("") || `<p class="line sub">No records found.</p>`;
+}
+$("recSearch").oninput = renderRecs;
+$("recsBtn").onclick = async () => {
+  try {
+    $("recList").innerHTML = `<p class="line sub">Loading…</p>`; $("recSearch").value = "";
+    openPanel("recPanel");
+    records = (await api("GET", null, "action=list")).records; renderRecs();
+  } catch (err) { $("recList").innerHTML = `<p style="color:#d33">${err.message}</p>`; }
+};
+$("recList").onclick = e => {
+  const el = e.target.closest(".rec"); if (!el) return;
+  const r = records[el.dataset.i];
+  try { setState(JSON.parse(r.data)); } catch { return setStatus("Could not read that record", true); }
+  recordId = r.id; paidSoFar = +r.paid || 0; $("paid").value = ""; $("sync").checked = false;
+  closeModal(); calc(); setStatus(`Loaded ${r.id} · enter payment, then tick Save to sheet`);
+};
 $("copy").onclick = async () => {
   try { await navigator.clipboard.writeText(summaryText); $("copy").textContent = "Copied!"; }
   catch { $("copy").textContent = "Copy failed"; }
   setTimeout(()=>$("copy").textContent = "Copy summary", 1500);
 };
-$("reset").onclick = () => { document.querySelectorAll("input").forEach(i=>i.value=""); $("pkg").value = 0; $("upg").value = 0; calc(); };
+$("reset").onclick = () => {
+  document.querySelectorAll("main input, aside input").forEach(i => i.value = "");
+  $("pkg").value = 0; $("upg").value = 0; $("sync").checked = false;
+  recordId = ""; paidSoFar = 0; $("payDate").value = today(); $("payBy").value = store.get("payBy");
+  setStatus(""); calc();
+};
 calc();
 </script>
 </body>
