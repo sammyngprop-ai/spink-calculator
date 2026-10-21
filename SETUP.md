@@ -2,12 +2,11 @@
 
 1. Go to https://sheets.new and create a Google Sheet (name it e.g. "Spink Records").
 2. In the sheet: **Extensions > Apps Script**. Delete the default code and paste in everything from `Code.gs`.
-3. Change `CHANGE-ME` on the first line to a secret word of your choice. Save.
-4. **Deploy > New deployment > type: Web app**
+3. **Deploy > New deployment > type: Web app**
    - Execute as: **Me**
    - Who has access: **Anyone**
    - Click Deploy, approve the permissions, and copy the **Web app URL** (ends in `/exec`).
-5. Open the calculator, tap **⚙ Sheet**, paste the URL and your secret word, and Save.
+4. Open the calculator, tap **⚙ Sheet**, paste the URL, and Save.
    (This is stored in that browser only; repeat on each phone/computer.)
 
 The sheet gets two tabs automatically:

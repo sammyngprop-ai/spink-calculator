@@ -1,8 +1,6 @@
 // Spink Calculator – Google Sheet backend (Google Apps Script)
 // Paste into Extensions > Apps Script of your Google Sheet, then Deploy > Web app.
 
-const KEY = 'CHANGE-ME'; // must match the "Secret key" in the calculator's ⚙ Sheet settings
-
 const REC_HEAD = ['ID', 'Created', 'Updated', 'Mommy Name', 'Room No', 'Package', 'Items',
                   'Discount', 'Total', 'Deposit Paid', 'Paid', 'Balance', 'Status', 'Data'];
 const PAY_HEAD = ['Payment Date', 'Record ID', 'Mommy Name', 'Room No', 'Amount', 'Type', 'Collected By', 'Logged At'];
@@ -28,7 +26,6 @@ function doPost(e) {
   lock.waitLock(20000);
   try {
     const b = JSON.parse(e.postData.contents);
-    if (b.key !== KEY) return out_({ ok: false, error: 'Wrong secret key' });
     if (b.action !== 'save') return out_({ ok: false, error: 'Unknown action' });
     return out_(save_(b));
   } catch (err) {
@@ -40,7 +37,6 @@ function doPost(e) {
 
 function doGet(e) {
   try {
-    if (e.parameter.key !== KEY) return out_({ ok: false, error: 'Wrong secret key' });
     const rows = sheet_('Records', REC_HEAD).getDataRange().getValues().slice(1);
     const records = rows.reverse().slice(0, 300).map(r => ({
       id: r[0], mommy: r[3], room: r[4], pkg: r[5], total: r[8], deposit: r[9], paid: r[10],
@@ -86,5 +82,5 @@ function save_(b) {
   } else {
     recs.appendRow([b.id, now, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data]);
   }
-  return { ok: true, id: b.id, paid, balance, status };
+  return { ok: true, id: b.id, deposit, paid, balance, status };
 }
