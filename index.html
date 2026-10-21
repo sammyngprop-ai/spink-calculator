@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spink Calculator</title>
+<style>
+  :root { --bg:#fff5f8; --card:#fff; --ink:#3a2a31; --muted:#8a7480; --pink:#d6336c; --line:#f1d5de; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1d1519; --card:#2a1f25; --ink:#f6e9ee; --muted:#b59ca7; --pink:#ff6b9d; --line:#43323b; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.4 system-ui,sans-serif; }
+  .wrap { max-width:1000px; margin:0 auto; padding:16px; display:grid; gap:16px; grid-template-columns:1fr; }
+  @media (min-width:860px){ .wrap{ grid-template-columns:1.4fr 1fr; align-items:start; } header{ grid-column:1/-1; } .summary{ position:sticky; top:16px; } }
+  h1 { margin:0; color:var(--pink); } h1 small { display:block; color:var(--muted); font-size:14px; font-weight:400; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  h2 { margin:0 0 12px; font-size:16px; color:var(--pink); }
+  .row { display:grid; grid-template-columns:1fr 84px 84px; gap:8px; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
+  .row:first-of-type { border-top:0; }
+  .row .name small { display:block; color:var(--muted); font-size:12px; }
+  .row.free { grid-template-columns:1fr 96px 70px; }
+  .hdr { color:var(--muted); font-size:12px; border:0; padding:0 0 4px; }
+  input, select { width:100%; padding:8px; font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:8px; }
+  .line { display:flex; justify-content:space-between; padding:5px 0; }
+  .line.sub { color:var(--muted); font-size:14px; }
+  .total { border-top:2px solid var(--pink); margin-top:8px; padding-top:8px; font-weight:700; font-size:18px; }
+  .balance { color:var(--pink); font-weight:800; font-size:22px; }
+  #mommy, #room { color:var(--pink); font-weight:800; font-size:18px; }
+  button { width:100%; margin-top:12px; padding:10px; font:inherit; background:var(--pink); color:#fff; border:0; border-radius:8px; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Spink Calculator <small>Package &amp; add-on service calculator (RM)</small></h1></header>
+
+  <main>
+    <div class="card" style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
+      <div><label for="mommy" style="color:var(--muted);font-size:13px">Mommy Name</label>
+        <input id="mommy" type="text" placeholder="Name"></div>
+      <div><label for="room" style="color:var(--muted);font-size:13px">Room No</label>
+        <input id="room" type="text" placeholder="e.g. 101"></div>
+    </div>
+
+    <div class="card">
+      <h2>Package</h2>
+      <select id="pkg"></select>
+      <div class="line sub" style="margin-top:8px"><span>Package price</span><span id="pkgPrice"></span></div>
+      <div class="line sub"><span>SST</span><span id="pkgSst"></span></div>
+    </div>
+
+    <div class="card">
+      <h2>Upgrade room</h2>
+      <select id="upg"></select>
+    </div>
+
+    <div class="card">
+      <h2>Add-on services <span style="color:var(--muted);font-weight:400;font-size:12px">(SST 8% where marked)</span></h2>
+      <div class="row hdr"><span>Service</span><span>Unit price</span><span>Qty</span></div>
+      <div id="addons"></div>
+    </div>
+
+    <div class="card">
+      <h2>Other services <span style="color:var(--muted);font-weight:400;font-size:12px">(enter price)</span></h2>
+      <div class="row free hdr"><span>Service</span><span>Price (RM)</span><span>Qty</span></div>
+      <div id="others"></div>
+    </div>
+  </main>
+
+  <aside class="summary">
+    <div class="card">
+      <h2>Summary</h2>
+      <div id="lines"></div>
+      <div class="line"><span>Package total (incl. SST)</span><span id="tPkg"></span></div>
+      <div class="line"><span>Add-ons (excl. SST)</span><span id="tAdd"></span></div>
+      <div class="line"><span>Add-on SST</span><span id="tAddSst"></span></div>
+      <div style="margin-top:8px">
+        <label for="disc" style="color:var(--muted);font-size:13px">Discount (RM)</label>
+        <input id="disc" type="number" min="0" step="0.01" placeholder="0.00">
+      </div>
+      <div class="line"><span>Discount</span><span id="tDisc"></span></div>
+      <div class="line total"><span>Total amount</span><span id="tAll"></span></div>
+      <div style="margin-top:12px">
+        <label for="paid" style="color:var(--muted);font-size:13px">Amount paid (RM)</label>
+        <input id="paid" type="number" min="0" step="0.01" placeholder="0.00">
+      </div>
+      <div class="line total balance"><span>Balance</span><span id="bal"></span></div>
+      <button id="copy">Copy summary</button>
+      <button id="reset" class="ghost">Reset</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+const PACKAGES = [
+  ["28 Deluxe", 17888, 583.05], ["28 VIP", 19888, 639.05], ["28 Premier", 24888, 799.05],
+  ["42 Deluxe", 24888, 807.05], ["42 VVIP", 26888, 871.05], ["42 Premier", 36888, 1191.05],
+];
+const SST_RATE = 0.08;
+// [name, unit label, unit price, taxed]
+const ADDONS = [
+  ["Infant Care", "per night", 350, true],
+  ["Day Care", "per day", 250, true],
+  ["Extended Stay", "per day", 650, true],
+  ["Massage (single)", "per session", 258, false],
+  ["Massage bundle – 3 sessions", "bundle", 758, false],
+  ["Massage bundle – 5 sessions", "bundle", 1188, false],
+  ["Massage bundle – 7 sessions", "bundle", 1588, false],
+  ["Phototherapy", "per 24 hours", 150, false],
+];
+const UPGRADES = [["None", 0], ["Standard Pro-Max", 800], ["Executive", 1500], ["Family", 2500]];
+const OTHERS = ["Daddy Meal", "Hair Spa", "Facial", "TCM", "Herbal Bath", "Product"];
+
+const $ = id => document.getElementById(id);
+const rm = n => "RM " + n.toLocaleString("en-MY", {minimumFractionDigits:2, maximumFractionDigits:2});
+const num = el => Math.max(0, parseFloat(el.value) || 0);
+
+$("pkg").innerHTML = PACKAGES.map((p,i)=>`<option value="${i}">${p[0]} — ${rm(p[1])}</option>`).join("");
+
+$("upg").innerHTML = UPGRADES.map((u,i)=>`<option value="${i}">${u[0]}${u[1]?" — "+rm(u[1]):""}</option>`).join("");
+
+$("addons").innerHTML = ADDONS.map((a,i)=>`
+  <div class="row">
+    <div class="name">${a[0]}<small>${a[1]}${a[3]?" · +8% SST":""}</small></div>
+    <div>${rm(a[2])}</div>
+    <input type="number" min="0" step="1" data-a="${i}" placeholder="0">
+  </div>`).join("");
+
+$("others").innerHTML = OTHERS.map((o,i)=>`
+  <div class="row free">
+    <div class="name">${o === "Product" ? `<input type="text" data-pn placeholder="Product name">` : o}</div>
+    <input type="number" min="0" step="0.01" data-op="${i}" placeholder="0.00">
+    <input type="number" min="0" step="1" data-oq="${i}" placeholder="1">
+  </div>`).join("");
+
+let summaryText = "";
+const wb = s => s ? `*${s}*` : s; // WhatsApp bold
+function calc() {
+  const [pname, pprice, psst] = PACKAGES[$("pkg").value];
+  $("pkgPrice").textContent = rm(pprice);
+  $("pkgSst").textContent = rm(psst);
+  const pkgTotal = pprice + psst;
+
+  let add = 0, addSst = 0;
+  const lines = [];
+  const [uname, uprice] = UPGRADES[$("upg").value];
+  if (uprice) { add += uprice; lines.push([`Upgrade room: ${uname}`, uprice]); }
+  document.querySelectorAll("[data-a]").forEach(el => {
+    const q = num(el); if (!q) return;
+    const [name,,price,taxed] = ADDONS[el.dataset.a];
+    const amt = q * price, tax = taxed ? amt * SST_RATE : 0;
+    add += amt; addSst += tax;
+    lines.push([`${name} × ${q}`, amt + tax]);
+  });
+  OTHERS.forEach((name,i) => {
+    const price = num(document.querySelector(`[data-op="${i}"]`));
+    const qEl = document.querySelector(`[data-oq="${i}"]`);
+    const q = qEl.value === "" ? 1 : num(qEl);
+    if (!price || !q) return;
+    add += price * q;
+    const label = name === "Product" ? (document.querySelector("[data-pn]").value.trim() || "Product") : name;
+    lines.push([`${label} × ${q}`, price * q]);
+  });
+
+  const disc = Math.min(num($("disc")), pkgTotal + add + addSst);
+  const total = pkgTotal + add + addSst - disc;
+  $("tDisc").textContent = disc ? "- " + rm(disc) : rm(0);
+  const paid = num($("paid"));
+  $("lines").innerHTML =
+    `<div class="line"><span>${pname}</span><span>${rm(pkgTotal)}</span></div>` +
+    lines.map(l=>`<div class="line sub"><span>${l[0]}</span><span>${rm(l[1])}</span></div>`).join("");
+  $("tPkg").textContent = rm(pkgTotal);
+  $("tAdd").textContent = rm(add);
+  $("tAddSst").textContent = rm(addSst);
+  $("tAll").textContent = rm(total);
+  $("bal").textContent = rm(total - paid);
+
+  summaryText = [`Spink Summary`, `Mommy Name: ${wb($("mommy").value.trim())}`, `Room No: ${wb($("room").value.trim())}`,`${pname}: ${rm(pkgTotal)} (incl. SST ${rm(psst)})`,
+    ...lines.map(l=>`${l[0]}: ${rm(l[1])}`),
+    ...(disc ? [`Discount: -${rm(disc)}`] : []), `Total: ${rm(total)}`, `Paid: ${rm(paid)}`, `Balance: ${wb(rm(total - paid))}`].join("\n");
+}
+
+document.addEventListener("input", calc);
+$("pkg").addEventListener("change", calc);
+$("upg").addEventListener("change", calc);
+$("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText(summaryText); $("copy").textContent = "Copied!"; }
+  catch { $("copy").textContent = "Copy failed"; }
+  setTimeout(()=>$("copy").textContent = "Copy summary", 1500);
+};
+$("reset").onclick = () => { document.querySelectorAll("input").forEach(i=>i.value=""); $("pkg").value = 0; $("upg").value = 0; calc(); };
+calc();
+</script>
+</body>
+</html>
