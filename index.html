@@ -72,6 +72,8 @@
     <div class="card">
       <h2>Upgrade room</h2>
       <select id="upg"></select>
+      <label for="pref" class="s" style="margin-top:8px">Preferred Room</label>
+      <input id="pref" type="text" placeholder="e.g. Room 301">
     </div>
 
     <div class="card">
@@ -224,7 +226,7 @@ function calc() {
   $("tAll").textContent = rm(total);
   $("bal").textContent = rm(total - paid);
 
-  summaryText = [`Spink Summary`, `Mommy Name: ${wb($("mommy").value.trim())}`, `Room No: ${wb($("room").value.trim())}`,`${pname}: ${rm(pkgTotal)} (incl. SST ${rm(psst)})`,
+  summaryText = [`Spink Summary`, `Mommy Name: ${wb($("mommy").value.trim())}`, `Room No: ${wb($("room").value.trim())}`, ...($("pref").value.trim() ? [`Preferred Room: ${$("pref").value.trim()}`] : []), `${pname}: ${rm(pkgTotal)} (incl. SST ${rm(psst)})`,
     ...lines.map(l=>`${l[0]}: ${rm(l[1])}`),
     ...(disc ? [`Discount: -${rm(disc)}`] : []), `Total: ${rm(total)}`, ...(dep ? [`Deposit Paid: ${rm(dep)}`] : []), `Paid: ${rm(paid)}`, `Balance: ${wb(rm(total - paid))}`].join("\n");
 }
@@ -250,14 +252,14 @@ $("pkg").addEventListener("change", onEdit);
 $("upg").addEventListener("change", onEdit);
 
 const getState = () => ({
-  mommy: $("mommy").value, room: $("room").value, pkg: $("pkg").value, upg: $("upg").value, disc: $("disc").value, checkin: $("checkin").value,
+  mommy: $("mommy").value, room: $("room").value, pkg: $("pkg").value, upg: $("upg").value, disc: $("disc").value, checkin: $("checkin").value, pref: $("pref").value,
   a: [...document.querySelectorAll("[data-a]")].map(e => e.value),
   op: [...document.querySelectorAll("[data-op]")].map(e => e.value),
   oq: [...document.querySelectorAll("[data-oq]")].map(e => e.value),
   pn: document.querySelector("[data-pn]").value,
 });
 function setState(s) {
-  ["mommy", "room", "pkg", "upg", "disc", "checkin"].forEach(k => $(k).value = s[k] ?? "");
+  ["mommy", "room", "pkg", "upg", "disc", "checkin", "pref"].forEach(k => $(k).value = s[k] ?? "");
   document.querySelectorAll("[data-a]").forEach((e, i) => e.value = s.a?.[i] ?? "");
   document.querySelectorAll("[data-op]").forEach((e, i) => e.value = s.op?.[i] ?? "");
   document.querySelectorAll("[data-oq]").forEach((e, i) => e.value = s.oq?.[i] ?? "");
@@ -292,6 +294,7 @@ $("sync").onchange = async () => {
   try {
     const j = await api("POST", {
       action: "save", id: recordId, mommy, room: $("room").value.trim(), pkg: ctx.pname,
+      upgrade: UPGRADES[$("upg").value][1] ? UPGRADES[$("upg").value][0] : "", pref: $("pref").value.trim(),
       items: ctx.itemsText, discount: ctx.disc, total: ctx.total, data: JSON.stringify(getState()),
       payments,
     });

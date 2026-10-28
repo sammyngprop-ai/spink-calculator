@@ -2,7 +2,8 @@
 // Paste into Extensions > Apps Script of your Google Sheet, then Deploy > Web app.
 
 const REC_HEAD = ['ID', 'Created', 'Updated', 'Mommy Name', 'Room No', 'Package', 'Items',
-                  'Discount', 'Total', 'Deposit Paid', 'Paid', 'Balance', 'Status', 'Data'];
+                  'Discount', 'Total', 'Deposit Paid', 'Paid', 'Balance', 'Status', 'Data',
+                  'Upgrade Room', 'Preferred Room']; // kept after Data so older sheets keep their column positions
 const PAY_HEAD = ['Payment Date', 'Record ID', 'Mommy Name', 'Room No', 'Amount', 'Type', 'Collected By', 'Logged At'];
 
 // Mom Service Tracker tabs (all plain text so dates and numbers are stored exactly as sent)
@@ -67,6 +68,10 @@ function sheet_(name, head) {
     sh.appendRow(head);
     sh.setFrozenRows(1);
     sh.getRange(1, 1, 1, head.length).setFontWeight('bold');
+  } else if (sh.getMaxColumns() < head.length || sh.getRange(1, 1, 1, head.length).getValues()[0].join() !== head.join()) {
+    // older sheet: add any newly introduced columns and headers
+    if (sh.getMaxColumns() < head.length) sh.insertColumnsAfter(sh.getMaxColumns(), head.length - sh.getMaxColumns());
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');
   }
   return sh;
 }
@@ -139,9 +144,9 @@ function save_(b) {
     const row = idx + 1;
     const created = recs.getRange(row, 2).getValue();
     recs.getRange(row, 1, 1, REC_HEAD.length).setValues([[
-      b.id, created, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data]]);
+      b.id, created, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data, b.upgrade || "", b.pref || ""]]);
   } else {
-    recs.appendRow([b.id, now, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data]);
+    recs.appendRow([b.id, now, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data, b.upgrade || "", b.pref || ""]);
   }
   return { ok: true, id: b.id, deposit, paid, balance, status };
 }
