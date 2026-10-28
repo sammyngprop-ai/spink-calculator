@@ -3,7 +3,7 @@
 
 const REC_HEAD = ['ID', 'Created', 'Updated', 'Mommy Name', 'Room No', 'Package', 'Items',
                   'Discount', 'Total', 'Deposit Paid', 'Paid', 'Balance', 'Status', 'Data',
-                  'Upgrade Room', 'Preferred Room']; // kept after Data so older sheets keep their column positions
+                  'Upgrade Room', 'Preferred Room', 'Sign Up Date']; // kept after Data so older sheets keep their column positions
 const PAY_HEAD = ['Payment Date', 'Record ID', 'Mommy Name', 'Room No', 'Amount', 'Type', 'Collected By', 'Logged At'];
 
 // Mom Service Tracker tabs (all plain text so dates and numbers are stored exactly as sent)
@@ -144,9 +144,9 @@ function save_(b) {
     const row = idx + 1;
     const created = recs.getRange(row, 2).getValue();
     recs.getRange(row, 1, 1, REC_HEAD.length).setValues([[
-      b.id, created, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data, b.upgrade || "", b.pref || ""]]);
+      b.id, created, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data, b.upgrade || "", b.pref || "", b.signup || ""]]);
   } else {
-    recs.appendRow([b.id, now, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data, b.upgrade || "", b.pref || ""]);
+    recs.appendRow([b.id, now, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data, b.upgrade || "", b.pref || "", b.signup || ""]);
   }
   return { ok: true, id: b.id, deposit, paid, balance, status };
 }
