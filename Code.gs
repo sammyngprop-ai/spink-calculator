@@ -51,7 +51,7 @@ function trackerSync_(b) {
   const records = sheet_('Records', REC_HEAD).getDataRange().getValues().slice(1).map(r => ({
     id: r[0],
     created: r[1] instanceof Date ? Utilities.formatDate(r[1], tz, 'yyyy-MM-dd') : String(r[1]),
-    mommy: r[3], room: r[4], pkg: r[5], data: r[13],
+    mommy: r[3], room: r[4], pkg: r[5], data: r[13], upgrade: r[14] || '', pref: r[15] || '',
   }));
   return {
     ok: true, records,
