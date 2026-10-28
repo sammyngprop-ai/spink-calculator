@@ -63,6 +63,8 @@
     <div class="card">
       <h2>Package</h2>
       <select id="pkg"></select>
+      <div style="margin-top:8px"><label for="checkin" style="color:var(--muted);font-size:13px">Check-in date</label>
+        <input id="checkin" type="date"></div>
       <div class="line sub" style="margin-top:8px"><span>Package price</span><span id="pkgPrice"></span></div>
       <div class="line sub"><span>SST</span><span id="pkgSst"></span></div>
     </div>
@@ -248,14 +250,14 @@ $("pkg").addEventListener("change", onEdit);
 $("upg").addEventListener("change", onEdit);
 
 const getState = () => ({
-  mommy: $("mommy").value, room: $("room").value, pkg: $("pkg").value, upg: $("upg").value, disc: $("disc").value,
+  mommy: $("mommy").value, room: $("room").value, pkg: $("pkg").value, upg: $("upg").value, disc: $("disc").value, checkin: $("checkin").value,
   a: [...document.querySelectorAll("[data-a]")].map(e => e.value),
   op: [...document.querySelectorAll("[data-op]")].map(e => e.value),
   oq: [...document.querySelectorAll("[data-oq]")].map(e => e.value),
   pn: document.querySelector("[data-pn]").value,
 });
 function setState(s) {
-  ["mommy", "room", "pkg", "upg", "disc"].forEach(k => $(k).value = s[k] ?? "");
+  ["mommy", "room", "pkg", "upg", "disc", "checkin"].forEach(k => $(k).value = s[k] ?? "");
   document.querySelectorAll("[data-a]").forEach((e, i) => e.value = s.a?.[i] ?? "");
   document.querySelectorAll("[data-op]").forEach((e, i) => e.value = s.op?.[i] ?? "");
   document.querySelectorAll("[data-oq]").forEach((e, i) => e.value = s.oq?.[i] ?? "");
@@ -329,6 +331,7 @@ function renderRecs() {
       <span class="badge" style="color:${r.status === "Paid" ? "#2a9d4b" : "var(--pink)"}">${esc(r.status)}</span>
       <b>${esc(r.mommy)}</b> · Room ${esc(r.room)}
       <small>${esc(r.pkg)} · Total ${rm(+r.total || 0)} · Deposit ${rm(+r.deposit || 0)} · Balance ${rm(+r.balance || 0)}</small>
+      ${r.usage ? `<small>Treatments used: ${esc(r.usage)}</small>` : ""}
     </div>`).join("") || `<p class="line sub">No records found.</p>`;
 }
 let recFilter = "unpaid"; // opens on customers who still owe a balance

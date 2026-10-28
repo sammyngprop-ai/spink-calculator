@@ -5,6 +5,60 @@ const REC_HEAD = ['ID', 'Created', 'Updated', 'Mommy Name', 'Room No', 'Package'
                   'Discount', 'Total', 'Deposit Paid', 'Paid', 'Balance', 'Status', 'Data'];
 const PAY_HEAD = ['Payment Date', 'Record ID', 'Mommy Name', 'Room No', 'Amount', 'Type', 'Collected By', 'Logged At'];
 
+// Mom Service Tracker tabs (all plain text so dates and numbers are stored exactly as sent)
+const MOM_HEAD = ['Mom ID', 'Updated', 'Name', 'Room', 'Package', 'Check-in', 'Usage', 'Data'];
+const TR_HEAD = ['Treatment ID', 'Mom ID', 'Mommy Name', 'Service', 'Option', 'Date', 'Time', 'Note', 'Updated', 'Deleted'];
+
+function textSheet_(name, head) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.getRange(1, 1, sh.getMaxRows(), head.length).setNumberFormat('@');
+    sh.appendRow(head);
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, head.length).setFontWeight('bold');
+  }
+  return sh;
+}
+
+// insert new rows, or replace an existing row only when the incoming one is newer (column uCol = updated ms)
+function upsert_(sh, rows, uCol) {
+  const last = sh.getLastRow();
+  const width = rows.length ? rows[0].length : sh.getLastColumn();
+  const existing = last > 1 ? sh.getRange(2, 1, last - 1, width).getValues().map(r => r.map(String)) : [];
+  const pos = {};
+  existing.forEach((r, i) => { pos[r[0]] = i; });
+  let changed = false;
+  rows.forEach(r => {
+    const i = pos[r[0]];
+    if (i === undefined) { pos[r[0]] = existing.length; existing.push(r); changed = true; }
+    else if (Number(r[uCol]) > Number(existing[i][uCol])) { existing[i] = r; changed = true; }
+  });
+  if (changed && existing.length) sh.getRange(2, 1, existing.length, width).setValues(existing);
+  return existing;
+}
+
+function trackerSync_(b) {
+  const str = v => String(v == null ? '' : v);
+  const moms = upsert_(textSheet_('Mommies', MOM_HEAD),
+    (b.moms || []).map(m => [m.id, m.u, m.name, m.room, m.pkg, m.start, m.usage, m.data].map(str)), 1);
+  const trs = upsert_(textSheet_('Treatments', TR_HEAD),
+    (b.treatments || []).map(t => [t.id, t.momId, t.name, t.service, t.option, t.date, t.time, t.note, t.u, t.deleted ? '1' : ''].map(str)), 8);
+
+  const tz = Session.getScriptTimeZone();
+  const records = sheet_('Records', REC_HEAD).getDataRange().getValues().slice(1).map(r => ({
+    id: r[0],
+    created: r[1] instanceof Date ? Utilities.formatDate(r[1], tz, 'yyyy-MM-dd') : String(r[1]),
+    mommy: r[3], room: r[4], pkg: r[5], data: r[13],
+  }));
+  return {
+    ok: true, records,
+    moms: moms.map(r => ({ id: r[0], u: Number(r[1]), data: r[7] })),
+    treatments: trs.map(r => ({ id: r[0], momId: r[1], service: r[3], option: r[4], date: r[5], time: r[6], note: r[7], u: Number(r[8]), deleted: r[9] === '1' })),
+  };
+}
+
 function sheet_(name, head) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(name);
@@ -26,6 +80,7 @@ function doPost(e) {
   lock.waitLock(20000);
   try {
     const b = JSON.parse(e.postData.contents);
+    if (b.action === 'tracker_sync') return out_(trackerSync_(b));
     if (b.action !== 'save') return out_({ ok: false, error: 'Unknown action' });
     return out_(save_(b));
   } catch (err) {
@@ -38,9 +93,15 @@ function doPost(e) {
 function doGet(e) {
   try {
     const rows = sheet_('Records', REC_HEAD).getDataRange().getValues().slice(1);
+    // treatment usage written by the Mom Service Tracker (tab "Mommies"), e.g. "Massage 2/5 · Facial 0/1"
+    const usage = {};
+    const ms = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Mommies');
+    if (ms && ms.getLastRow() > 1) {
+      ms.getRange(2, 1, ms.getLastRow() - 1, MOM_HEAD.length).getValues().forEach(r => { usage[r[0]] = r[6]; });
+    }
     const records = rows.reverse().slice(0, 300).map(r => ({
       id: r[0], mommy: r[3], room: r[4], pkg: r[5], total: r[8], deposit: r[9], paid: r[10],
-      balance: r[11], status: r[12], data: r[13],
+      balance: r[11], status: r[12], data: r[13], usage: usage[r[0]] || '',
     }));
     return out_({ ok: true, records });
   } catch (err) {
