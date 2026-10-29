@@ -371,6 +371,23 @@ $("reset").onclick = () => {
   recordId = ""; paidSoFar = 0; depositSoFar = 0; $("dep").readOnly = false; $("payDate").value = today(); $("signup").value = today(); $("payBy").value = store.get("payBy");
   setStatus(""); calc();
 };
+
+// Prefill from the lead app, e.g. /#name=Aisha&package=28-deluxe&checkin=2026-12-01&signup=2026-10-29&pref=Room+301&owner=Sammy
+// Read from the URL fragment so names never reach server logs; cleared afterwards so a refresh doesn't re-apply it.
+(function prefill() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  if (![...p.keys()].length) return;
+  const slug = s => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s || "");
+  if (p.get("name")) $("mommy").value = p.get("name").trim();
+  const pi = PACKAGES.findIndex(x => slug(x[0]) === p.get("package"));
+  if (pi >= 0) $("pkg").value = pi;
+  if (isDate(p.get("checkin"))) $("checkin").value = p.get("checkin");
+  if (isDate(p.get("signup"))) $("signup").value = p.get("signup");
+  if (p.get("pref")) $("pref").value = p.get("pref").trim();
+  if (p.get("owner")) $("payBy").value = p.get("owner").trim();
+  history.replaceState(null, "", location.pathname + location.search);
+})();
 calc();
 </script>
 </body>
