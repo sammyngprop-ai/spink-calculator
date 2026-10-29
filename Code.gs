@@ -8,6 +8,7 @@ const PAY_HEAD = ['Payment Date', 'Record ID', 'Mommy Name', 'Room No', 'Amount'
 
 // Mom Service Tracker tabs (all plain text so dates and numbers are stored exactly as sent)
 const MOM_HEAD = ['Mom ID', 'Updated', 'Name', 'Room', 'Package', 'Check-in', 'Usage', 'Data'];
+const CL_HEAD = ['Class ID', 'Title', 'Date', 'Time', 'End', 'Repeat', 'Until', 'Note', 'Updated', 'Deleted'];
 const TR_HEAD = ['Treatment ID', 'Mom ID', 'Mommy Name', 'Service', 'Option', 'Date', 'Time', 'Note', 'Updated', 'Deleted'];
 
 function textSheet_(name, head) {
@@ -47,6 +48,9 @@ function trackerSync_(b) {
   const trs = upsert_(textSheet_('Treatments', TR_HEAD),
     (b.treatments || []).map(t => [t.id, t.momId, t.name, t.service, t.option, t.date, t.time, t.note, t.u, t.deleted ? '1' : ''].map(str)), 8);
 
+  const cls = upsert_(textSheet_('Classes', CL_HEAD),
+    (b.classes || []).map(x => [x.id, x.title, x.date, x.time, x.end, x.repeat, x.until, x.note, x.u, x.deleted ? '1' : ''].map(str)), 8);
+
   const tz = Session.getScriptTimeZone();
   const records = sheet_('Records', REC_HEAD).getDataRange().getValues().slice(1).map(r => ({
     id: r[0],
@@ -55,6 +59,7 @@ function trackerSync_(b) {
   }));
   return {
     ok: true, records,
+    classes: cls.map(r => ({ id: r[0], title: r[1], date: r[2], time: r[3], end: r[4], repeat: r[5], until: r[6], note: r[7], u: Number(r[8]), deleted: r[9] === '1' })),
     moms: moms.map(r => ({ id: r[0], u: Number(r[1]), data: r[7] })),
     treatments: trs.map(r => ({ id: r[0], momId: r[1], service: r[3], option: r[4], date: r[5], time: r[6], note: r[7], u: Number(r[8]), deleted: r[9] === '1' })),
   };
