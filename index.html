@@ -159,7 +159,8 @@ const ADDONS = [
   ["Phototherapy", "per 24 hours", 150, false],
 ];
 const UPGRADES = [["None", 0], ["Standard Pro-Max", 800], ["Executive", 1500], ["Family", 2500]];
-const OTHERS = ["Daddy Meal", "Hair Spa", "Facial", "TCM", "Herbal Bath", "Product"];
+// new rows go at the end: saved records store these by position
+const OTHERS = ["Daddy Meal", "Hair Spa", "Facial", "TCM", "Herbal Bath", "Product", "Meal Delivery", "Post Surgery Stay"];
 
 const $ = id => document.getElementById(id);
 const rm = n => "RM " + n.toLocaleString("en-MY", {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -386,6 +387,12 @@ $("reset").onclick = () => {
   if (isDate(p.get("signup"))) $("signup").value = p.get("signup");
   if (p.get("pref")) $("pref").value = p.get("pref").trim();
   if (p.get("owner")) $("payBy").value = p.get("owner").trim();
+  // services the lead asked about: start at quantity 1 (add-ons are priced; the Others rows need a price typed in)
+  (p.get("others") || "").split(",").forEach(o => {
+    const a = ADDONS.findIndex(x => slug(x[0]) === o), b = OTHERS.findIndex(x => slug(x) === o);
+    if (a >= 0) document.querySelector(`[data-a="${a}"]`).value = 1;
+    else if (b >= 0) document.querySelector(`[data-oq="${b}"]`).value = 1;
+  });
   history.replaceState(null, "", location.pathname + location.search);
 })();
 calc();
