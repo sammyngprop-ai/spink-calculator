@@ -147,6 +147,7 @@
 const PACKAGES = [
   ["28 Deluxe", 17888, 583.05], ["28 VIP", 19888, 639.05], ["28 Premier", 24888, 799.05],
   ["42 Deluxe", 24888, 807.05], ["42 VVIP", 26888, 871.05], ["42 Premier", 36888, 1191.05],
+  ["28 Infant Care", 4200, 336, true], // 4th value: priced per baby (No. of Babies), not per mommy
 ];
 const SST_RATE = 0.08;
 // [name, unit label, unit price, taxed]
@@ -168,7 +169,7 @@ const $ = id => document.getElementById(id);
 const rm = n => "RM " + n.toLocaleString("en-MY", {minimumFractionDigits:2, maximumFractionDigits:2});
 const num = el => Math.max(0, parseFloat(el.value) || 0);
 
-$("pkg").innerHTML = PACKAGES.map((p,i)=>`<option value="${i}">${p[0]} — ${rm(p[1])}</option>`).join("");
+$("pkg").innerHTML = PACKAGES.map((p,i)=>`<option value="${i}">${p[0]} — ${rm(p[1])}${p[3] ? " per baby" : ""}</option>`).join("");
 
 $("upg").innerHTML = UPGRADES.map((u,i)=>`<option value="${i}">${u[0]}${u[1]?" — "+rm(u[1]):""}</option>`).join("");
 
@@ -189,7 +190,10 @@ $("others").innerHTML = OTHERS.map((o,i)=>`
 let summaryText = "", recordId = "", paidSoFar = 0, depositSoFar = 0, ctx = null;
 const wb = s => s ? `*${s}*` : s; // WhatsApp bold
 function calc() {
-  const [pname, pprice, psst] = PACKAGES[$("pkg").value];
+  const [pbase, price1, sst1, perBaby] = PACKAGES[$("pkg").value];
+  const qty = perBaby ? Math.max(1, parseInt($("babies").value) || 1) : 1; // baby-only package: count babies, not mommies
+  const pprice = price1 * qty, psst = sst1 * qty;
+  const pname = perBaby ? `${pbase} × ${qty} ${qty > 1 ? "babies" : "baby"}` : pbase;
   $("pkgPrice").textContent = rm(pprice);
   $("pkgSst").textContent = rm(psst);
   const pkgTotal = pprice + psst;
