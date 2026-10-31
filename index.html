@@ -53,11 +53,13 @@
   </header>
 
   <main>
-    <div class="card" style="display:grid;grid-template-columns:2fr 1fr;gap:8px">
+    <div class="card" style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">
       <div><label for="mommy" style="color:var(--muted);font-size:13px">Mommy Name</label>
         <input id="mommy" type="text" placeholder="Name"></div>
       <div><label for="room" style="color:var(--muted);font-size:13px">Room No</label>
         <input id="room" type="text" placeholder="e.g. 101"></div>
+      <div><label for="babies" style="color:var(--muted);font-size:13px">No. of Babies</label>
+        <input id="babies" type="number" min="1" step="1" placeholder="1"></div>
     </div>
 
     <div class="card">
@@ -229,7 +231,7 @@ function calc() {
   $("tAll").textContent = rm(total);
   $("bal").textContent = rm(total - paid);
 
-  summaryText = [`Spink Summary`, `Mommy Name: ${wb($("mommy").value.trim())}`, `Room No: ${wb($("room").value.trim())}`, ...($("pref").value.trim() ? [`Preferred Room: ${$("pref").value.trim()}`] : []), `${pname}: ${rm(pkgTotal)} (incl. SST ${rm(psst)})`,
+  summaryText = [`Spink Summary`, `Mommy Name: ${wb($("mommy").value.trim())}`, `Room No: ${wb($("room").value.trim())}`, ...($("babies").value ? [`No. of Babies: ${$("babies").value}`] : []),...($("pref").value.trim() ? [`Preferred Room: ${$("pref").value.trim()}`] : []), `${pname}: ${rm(pkgTotal)} (incl. SST ${rm(psst)})`,
     ...lines.map(l=>`${l[0]}: ${rm(l[1])}`),
     ...(disc ? [`Discount: -${rm(disc)}`] : []), `Total: ${rm(total)}`, ...(dep ? [`Deposit Paid: ${rm(dep)}`] : []), `Paid: ${rm(paid)}`, `Balance: ${wb(rm(total - paid))}`].join("\n");
 }
@@ -256,14 +258,14 @@ $("pkg").addEventListener("change", onEdit);
 $("upg").addEventListener("change", onEdit);
 
 const getState = () => ({
-  mommy: $("mommy").value, room: $("room").value, pkg: $("pkg").value, upg: $("upg").value, disc: $("disc").value, checkin: $("checkin").value, signup: $("signup").value, pref: $("pref").value,
+  mommy: $("mommy").value, room: $("room").value, pkg: $("pkg").value, upg: $("upg").value, disc: $("disc").value, checkin: $("checkin").value, signup: $("signup").value, pref: $("pref").value, babies: $("babies").value,
   a: [...document.querySelectorAll("[data-a]")].map(e => e.value),
   op: [...document.querySelectorAll("[data-op]")].map(e => e.value),
   oq: [...document.querySelectorAll("[data-oq]")].map(e => e.value),
   pn: document.querySelector("[data-pn]").value,
 });
 function setState(s) {
-  ["mommy", "room", "pkg", "upg", "disc", "checkin", "signup", "pref"].forEach(k => $(k).value = s[k] ?? "");
+  ["mommy", "room", "pkg", "upg", "disc", "checkin", "signup", "pref", "babies"].forEach(k => $(k).value = s[k] ?? "");
   document.querySelectorAll("[data-a]").forEach((e, i) => e.value = s.a?.[i] ?? "");
   document.querySelectorAll("[data-op]").forEach((e, i) => e.value = s.op?.[i] ?? "");
   document.querySelectorAll("[data-oq]").forEach((e, i) => e.value = s.oq?.[i] ?? "");
@@ -298,7 +300,7 @@ $("sync").onchange = async () => {
   try {
     const j = await api("POST", {
       action: "save", id: recordId, mommy, room: $("room").value.trim(), pkg: ctx.pname,
-      signup: $("signup").value,
+      signup: $("signup").value, babies: $("babies").value,
       upgrade: UPGRADES[$("upg").value][1] ? UPGRADES[$("upg").value][0] : "", pref: $("pref").value.trim(),
       items: ctx.itemsText, discount: ctx.disc, total: ctx.total, data: JSON.stringify(getState()),
       payments,
