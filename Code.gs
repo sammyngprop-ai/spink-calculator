@@ -105,8 +105,21 @@ function doPost(e) {
   }
 }
 
+// Payments between two dates (yyyy-mm-dd, inclusive) for the Incoming Sales daily report: ?action=payments&from=...&to=...
+function payments_(p) {
+  const tz = Session.getScriptTimeZone();
+  const from = String(p.from || ''), to = String(p.to || p.from || '');
+  const day = v => v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v).slice(0, 10);
+  const payments = sheet_('Payments', PAY_HEAD).getDataRange().getValues().slice(1)
+    .filter(r => Number(r[4]) > 0)
+    .map(r => ({ date: day(r[0]), id: r[1], mommy: r[2], room: r[3], amount: Number(r[4]), type: r[5], by: r[6] }))
+    .filter(x => (!from || x.date >= from) && (!to || x.date <= to));
+  return { ok: true, payments };
+}
+
 function doGet(e) {
   try {
+    if (e && e.parameter && e.parameter.action === 'payments') return out_(payments_(e.parameter));
     const rows = sheet_('Records', REC_HEAD).getDataRange().getValues().slice(1);
     // treatment usage written by the Mom Service Tracker (tab "Mommies"), e.g. "Massage 2/5 · Facial 0/1"
     const usage = {};
