@@ -42,6 +42,23 @@
   .rec { padding:10px; border:1px solid var(--line); border-radius:8px; margin-top:8px; cursor:pointer; }
   .rec:hover { border-color:var(--pink); }
   .rec b { color:var(--pink); } .rec small { color:var(--muted); display:block; }
+  #modal #recPanel { max-width:980px; }
+  .tabs { display:flex; gap:4px; margin-top:10px; border-bottom:1px solid var(--line); overflow-x:auto; }
+  .tabs button { width:auto; margin:0; padding:8px 12px; background:transparent; color:var(--muted); border:0; border-bottom:3px solid transparent; border-radius:0; white-space:nowrap; font-weight:600; }
+  .tabs button.on { color:var(--pink); border-bottom-color:var(--pink); }
+  .tabs button i { font-style:normal; font-size:12px; margin-left:4px; padding:1px 7px; border-radius:10px; background:var(--bg); }
+  .tbl { overflow-x:auto; margin-top:8px; }
+  .tbl table { width:100%; border-collapse:collapse; font-size:14px; white-space:nowrap; }
+  .tbl th { text-align:left; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); padding:8px; border-bottom:1px solid var(--line); }
+  .tbl td { padding:10px 8px; border-bottom:1px solid var(--line); }
+  .tbl .n { text-align:right; font-variant-numeric:tabular-nums; }
+  .tbl small { display:block; color:var(--muted); font-size:12px; }
+  .tbl tfoot td { font-weight:700; border-bottom:0; border-top:2px solid var(--pink); }
+  tr.rec { cursor:pointer; } tr.rec:hover td { background:var(--bg); }
+  .st { font-size:12px; font-weight:700; padding:2px 8px; border-radius:6px; border:1px solid; }
+  .st.paid { color:#1f8a3f; background:rgba(42,157,75,.12); border-color:rgba(42,157,75,.4); }
+  .st.part { color:#b26a00; background:rgba(230,150,0,.12); border-color:rgba(230,150,0,.45); }
+  .st.none { color:#c0392b; background:rgba(214,51,50,.1); border-color:rgba(214,51,50,.4); }
   .badge { float:right; font-size:12px; font-weight:700; }
 </style>
 </head>
@@ -49,7 +66,7 @@
 <div class="wrap">
   <header>
     <h1>Spink Calculator <small>Package &amp; add-on service calculator (RM)</small></h1>
-    <div class="hbtns"><button id="recsBtn">Records</button><button id="cfgBtn" class="ghost">⚙ Sheet</button></div>
+    <div class="hbtns"><button id="recsBtn">Bookings</button><button id="cfgBtn" class="ghost">⚙ Sheet</button></div>
   </header>
 
   <main>
@@ -134,9 +151,9 @@
     <button class="ghost closeM">Close</button>
   </div>
   <div class="card" id="recPanel" hidden>
-    <h2>Saved records</h2>
+    <h2>Bookings</h2>
     <input id="recSearch" type="search" placeholder="Search name or room…">
-    <div class="two"><button id="fUnpaid" type="button" style="margin:0">Unpaid</button><button id="fAll" type="button" class="ghost" style="margin:0">All</button></div>
+    <div class="tabs" id="recTabs"></div>
     <div id="recSum" class="line sub"></div>
     <div id="recList"></div>
     <button class="ghost closeM">Close</button>
@@ -335,26 +352,39 @@ function renderRecs() {
   const q = $("recSearch").value.trim().toLowerCase();
   const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const owing = r => (+r.balance || 0) > 0;
-  const list = records.filter(r => (recFilter === "all" || owing(r)) && (!q || (r.mommy + " " + r.room).toLowerCase().includes(q)));
+  const cat = r => (+r.balance || 0) <= 0 ? "paid" : (+r.deposit || 0) > 0 || (+r.paid || 0) > 0 ? "part" : "none";
+  const info = r => { try { return JSON.parse(r.data) || {}; } catch { return {}; } };
+  const fmtDate = d => /^\d{4}-\d{2}-\d{2}$/.test(d || "") ? new Date(d + "T00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–";
+  const list = records.filter(r => (recFilter === "all" || cat(r) === recFilter) && (!q || (r.mommy + " " + r.room).toLowerCase().includes(q)))
+    .map(r => ({ r, i: records.indexOf(r), checkin: info(r).checkin || "" }))
+    .sort((a, b) => (a.checkin || "9999") < (b.checkin || "9999") ? -1 : (a.checkin || "9999") > (b.checkin || "9999") ? 1 : a.i - b.i); // soonest check-in first, undated last
   const unpaid = records.filter(owing);
-  $("fUnpaid").className = recFilter === "all" ? "ghost" : ""; $("fAll").className = recFilter === "all" ? "" : "ghost";
-  $("fUnpaid").textContent = `Unpaid (${unpaid.length})`;
+  const TABS = [["none", "Not paid"], ["part", "Partly paid"], ["paid", "Paid"], ["all", "All"]];
+  $("recTabs").innerHTML = TABS.map(([k, t]) => `<button type="button" data-f="${k}" class="${recFilter === k ? "on" : ""}">${t}<i>${k === "all" ? records.length : records.filter(r => cat(r) === k).length}</i></button>`).join("");
   $("recSum").innerHTML = `<span>Outstanding balance</span><b>${rm(unpaid.reduce((s, r) => s + (+r.balance || 0), 0))}</b>`;
-  $("recList").innerHTML = list.map((r, i) => `
-    <div class="rec" data-i="${records.indexOf(r)}">
-      <span class="badge" style="color:${r.status === "Paid" ? "#2a9d4b" : "var(--pink)"}">${esc(r.status)}</span>
-      <b>${esc(r.mommy)}</b> · Room ${esc(r.room)}
-      <small>${esc(r.pkg)} · Total ${rm(+r.total || 0)} · Deposit ${rm(+r.deposit || 0)} · Balance ${rm(+r.balance || 0)}</small>
-      ${r.usage ? `<small>Treatments used: ${esc(r.usage)}</small>` : ""}
-    </div>`).join("") || `<p class="line sub">No records found.</p>`;
+  const badge = r => (+r.balance || 0) <= 0 ? ["paid", "paid in full"] : (+r.deposit || 0) > 0 || (+r.paid || 0) > 0 ? ["part", "balance due"] : ["none", "deposit not paid"];
+  const sum = k => list.reduce((s, x) => s + (+x.r[k] || 0), 0);
+  $("recList").innerHTML = list.length ? `
+    <div class="tbl"><table>
+      <thead><tr><th>Mother</th><th>Check-in</th><th>Room</th><th>Package</th>
+        <th class="n">Total package</th><th class="n">Deposit paid</th><th class="n">Balance</th><th>Status</th></tr></thead>
+      <tbody>${list.map(({ r, i, checkin }) => { const [cls, txt] = badge(r); return `
+        <tr class="rec" data-i="${i}">
+          <td><b>${esc(r.mommy)}</b>${r.usage ? `<small>Treatments used: ${esc(r.usage)}</small>` : ""}</td>
+          <td>${fmtDate(checkin)}</td><td>${esc(r.room) || "–"}</td><td>${esc(r.pkg)}</td>
+          <td class="n">${rm(+r.total || 0).slice(3)}</td><td class="n">${rm(+r.deposit || 0).slice(3)}</td>
+          <td class="n"><b>${rm(+r.balance || 0).slice(3)}</b></td><td><span class="st ${cls}">${txt}</span></td>
+        </tr>`; }).join("")}</tbody>
+      <tfoot><tr><td colspan="4">${list.length} booking${list.length > 1 ? "s" : ""}</td>
+        <td class="n">${rm(sum("total")).slice(3)}</td><td class="n">${rm(sum("deposit")).slice(3)}</td><td class="n">${rm(sum("balance")).slice(3)}</td><td></td></tr></tfoot>
+    </table></div>` : `<p class="line sub">No bookings found.</p>`;
 }
-let recFilter = "unpaid"; // opens on customers who still owe a balance
+let recFilter = "none"; // tabs: none = deposit not paid, part = balance due, paid = settled, all
 $("recSearch").oninput = renderRecs;
-$("fUnpaid").onclick = () => { recFilter = "unpaid"; renderRecs(); };
-$("fAll").onclick = () => { recFilter = "all"; renderRecs(); };
+$("recTabs").onclick = e => { const b = e.target.closest("[data-f]"); if (b) { recFilter = b.dataset.f; renderRecs(); } };
 $("recsBtn").onclick = async () => {
   try {
-    $("recList").innerHTML = `<p class="line sub">Loading…</p>`; $("recSearch").value = ""; recFilter = "unpaid";
+    $("recList").innerHTML = `<p class="line sub">Loading…</p>`; $("recSearch").value = ""; recFilter = "none";
     openPanel("recPanel");
     records = (await api("GET", null, "action=list")).records; renderRecs();
   } catch (err) { $("recList").innerHTML = `<p style="color:#d33">${err.message}</p>`; }
