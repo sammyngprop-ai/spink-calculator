@@ -117,8 +117,25 @@ function payments_(p) {
   return { ok: true, payments };
 }
 
+// Confirmed mommies from the Mom Service Tracker (tab "Mommies") for the Incoming Sales Rooms view: ?action=mommies
+function mommies_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Mommies');
+  if (!sh || sh.getLastRow() < 2) return { ok: true, mommies: [] };
+  const mommies = [];
+  sh.getRange(2, 1, sh.getLastRow() - 1, MOM_HEAD.length).getValues().forEach(r => {
+    let d = {};
+    try { d = JSON.parse(r[7] || '{}'); } catch (err) {}
+    if (d.deleted) return;
+    const start = String(r[5] || d.start || '').slice(0, 10), days = Number(d.days) || 0, name = String(r[2] || d.name || '');
+    if (!name || !/^\d{4}-\d\d-\d\d$/.test(start) || !days) return;
+    mommies.push({ id: String(r[0]), name, room: String(r[3] || d.room || ''), pkg: String(r[4] || d.pkgName || ''), start, days, babies: Number(d.babies) || 0 });
+  });
+  return { ok: true, mommies };
+}
+
 function doGet(e) {
   try {
+    if (e && e.parameter && e.parameter.action === 'mommies') return out_(mommies_());
     if (e && e.parameter && e.parameter.action === 'payments') return out_(payments_(e.parameter));
     const rows = sheet_('Records', REC_HEAD).getDataRange().getValues().slice(1);
     // treatment usage written by the Mom Service Tracker (tab "Mommies"), e.g. "Massage 2/5 · Facial 0/1"
