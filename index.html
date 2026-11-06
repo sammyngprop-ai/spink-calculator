@@ -43,6 +43,7 @@
   .rec:hover { border-color:var(--pink); }
   .rec b { color:var(--pink); } .rec small { color:var(--muted); display:block; }
   #modal #recPanel { max-width:980px; }
+  textarea { width:100%; padding:8px; font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:8px; }
   .tabs { display:flex; gap:4px; margin-top:10px; border-bottom:1px solid var(--line); overflow-x:auto; }
   .tabs button { width:auto; margin:0; padding:8px 12px; background:transparent; color:var(--muted); border:0; border-bottom:3px solid transparent; border-radius:0; white-space:nowrap; font-weight:600; }
   .tabs button.on { color:var(--pink); border-bottom-color:var(--pink); }
@@ -77,6 +78,8 @@
         <input id="room" type="text" placeholder="e.g. 101"></div>
       <div><label for="babies" style="color:var(--muted);font-size:13px">No. of Babies</label>
         <input id="babies" type="number" min="1" step="1" placeholder="1"></div>
+      <div style="grid-column:1/-1"><label for="contact" style="color:var(--muted);font-size:13px">Contact No</label>
+        <input id="contact" type="tel" placeholder="e.g. 012-3456789"></div>
     </div>
 
     <div class="card">
@@ -86,8 +89,6 @@
         <input id="checkin" type="date"></div>
       <div style="margin-top:8px"><label for="signup" style="color:var(--muted);font-size:13px">Sign Up date</label>
         <input id="signup" type="date"></div>
-      <div class="line sub" style="margin-top:8px"><span>Package price</span><span id="pkgPrice"></span></div>
-      <div class="line sub"><span>SST</span><span id="pkgSst"></span></div>
     </div>
 
     <div class="card">
@@ -155,8 +156,17 @@
     <input id="recSearch" type="search" placeholder="Search name or room…">
     <div class="tabs" id="recTabs"></div>
     <div id="recSum" class="line sub"></div>
+    <button id="bulkBtn" type="button" class="ghost" style="margin-top:8px">Add contact numbers in bulk</button>
     <div id="recList"></div>
     <button class="ghost closeM">Close</button>
+  </div>
+  <div class="card" id="bulkPanel" hidden>
+    <h2>Add contact numbers in bulk</h2>
+    <p class="line sub" style="display:block;margin:0 0 8px">One client per line: name, then number. Copy two columns from Excel / Google Sheets, or type like <b>Choi Pei Kee, 012-3456789</b>. Names must match the booking name.</p>
+    <textarea id="bulkText" rows="10" placeholder="Choi Pei Kee, 012-3456789&#10;Teng Jo Ee, 016-1234567"></textarea>
+    <button id="bulkGo" type="button">Add to bookings</button>
+    <div id="bulkRes" style="margin-top:8px;font-size:14px"></div>
+    <button class="ghost" id="bulkBack" type="button">Back to bookings</button>
   </div>
 </div>
 
@@ -197,12 +207,14 @@ $("addons").innerHTML = ADDONS.map((a,i)=>`
     <input type="number" min="0" step="1" data-a="${i}" placeholder="0">
   </div>`).join("");
 
-$("others").innerHTML = OTHERS.map((o,i)=>`
+// the free-text "Product" row is shown last; its index stays put because saved records store these by position
+const OTHERS_SHOWN = OTHERS.map((o, i) => i).sort((a, b) => (OTHERS[a] === "Product") - (OTHERS[b] === "Product"));
+$("others").innerHTML = OTHERS_SHOWN.map(i => { const o = OTHERS[i]; return `
   <div class="row free">
     <div class="name">${o === "Product" ? `<input type="text" data-pn placeholder="Product name">` : o}</div>
     <input type="number" min="0" step="0.01" data-op="${i}" placeholder="0.00">
     <input type="number" min="0" step="1" data-oq="${i}" placeholder="1">
-  </div>`).join("");
+  </div>`; }).join("");
 
 let summaryText = "", recordId = "", paidSoFar = 0, depositSoFar = 0, ctx = null;
 const wb = s => s ? `*${s}*` : s; // WhatsApp bold
@@ -211,8 +223,6 @@ function calc() {
   const qty = perBaby ? Math.max(1, parseInt($("babies").value) || 1) : 1; // baby-only package: count babies, not mommies
   const pprice = price1 * qty, psst = sst1 * qty;
   const pname = perBaby ? `${pbase} × ${qty} ${qty > 1 ? "babies" : "baby"}` : pbase;
-  $("pkgPrice").textContent = rm(pprice);
-  $("pkgSst").textContent = rm(psst);
   const pkgTotal = pprice + psst;
 
   let add = 0, addSst = 0;
@@ -244,7 +254,8 @@ function calc() {
   ctx = { pname, total, disc, itemsText: lines.map(l=>`${l[0]}: ${rm(l[1])}`).join("; ") };
   $("tPaid").textContent = rm(paidSoFar);
   $("lines").innerHTML =
-    `<div class="line"><span>${pname}</span><span>${rm(pkgTotal)}</span></div>` +
+    `<div class="line"><span>${pname}</span><span>${rm(pprice)}</span></div>` +
+    `<div class="line"><span>SST</span><span>${rm(psst)}</span></div>` +
     lines.map(l=>`<div class="line sub"><span>${l[0]}</span><span>${rm(l[1])}</span></div>`).join("");
   $("tPkg").textContent = rm(pkgTotal);
   $("tAdd").textContent = rm(add);
@@ -252,7 +263,7 @@ function calc() {
   $("tAll").textContent = rm(total);
   $("bal").textContent = rm(total - paid);
 
-  summaryText = [`Spink Summary`, `Mommy Name: ${wb($("mommy").value.trim())}`, `Room No: ${wb($("room").value.trim())}`, ...($("babies").value ? [`No. of Babies: ${$("babies").value}`] : []),...($("pref").value.trim() ? [`Preferred Room: ${$("pref").value.trim()}`] : []), `${pname}: ${rm(pkgTotal)} (incl. SST ${rm(psst)})`,
+  summaryText = [`Spink Summary`, `Mommy Name: ${wb($("mommy").value.trim())}`, `Room No: ${wb($("room").value.trim())}`, ...($("contact").value.trim() ? [`Contact No: ${$("contact").value.trim()}`] : []), ...($("babies").value ? [`No. of Babies: ${$("babies").value}`] : []),...($("pref").value.trim() ? [`Preferred Room: ${$("pref").value.trim()}`] : []), `${pname}: ${rm(pkgTotal)} (incl. SST ${rm(psst)})`,
     ...lines.map(l=>`${l[0]}: ${rm(l[1])}`),
     ...(disc ? [`Discount: -${rm(disc)}`] : []), `Total: ${rm(total)}`, ...(dep ? [`Deposit Paid: ${rm(dep)}`] : []), `Paid: ${rm(paid)}`, `Balance: ${wb(rm(total - paid))}`].join("\n");
 }
@@ -279,17 +290,21 @@ $("pkg").addEventListener("change", onEdit);
 $("upg").addEventListener("change", onEdit);
 
 const getState = () => ({
-  mommy: $("mommy").value, room: $("room").value, pkg: $("pkg").value, upg: $("upg").value, disc: $("disc").value, checkin: $("checkin").value, signup: $("signup").value, pref: $("pref").value, babies: $("babies").value,
+  mommy: $("mommy").value, room: $("room").value, pkg: $("pkg").value, upg: $("upg").value, disc: $("disc").value, checkin: $("checkin").value, signup: $("signup").value, pref: $("pref").value, babies: $("babies").value, contact: $("contact").value,
   a: [...document.querySelectorAll("[data-a]")].map(e => e.value),
-  op: [...document.querySelectorAll("[data-op]")].map(e => e.value),
-  oq: [...document.querySelectorAll("[data-oq]")].map(e => e.value),
+  op: OTHERS.map((_, i) => document.querySelector(`[data-op="${i}"]`).value),
+  oq: OTHERS.map((_, i) => document.querySelector(`[data-oq="${i}"]`).value),
   pn: document.querySelector("[data-pn]").value,
 });
 function setState(s) {
-  ["mommy", "room", "pkg", "upg", "disc", "checkin", "signup", "pref", "babies"].forEach(k => $(k).value = s[k] ?? "");
+  ["mommy", "room", "pkg", "upg", "disc", "checkin", "signup", "pref", "babies", "contact"].forEach(k => $(k).value = s[k] ?? "");
+  if ($("pkg").value === "") $("pkg").value = 0; // a record with no saved package falls back to the first one
+  if ($("upg").value === "") $("upg").value = 0;
   document.querySelectorAll("[data-a]").forEach((e, i) => e.value = s.a?.[i] ?? "");
-  document.querySelectorAll("[data-op]").forEach((e, i) => e.value = s.op?.[i] ?? "");
-  document.querySelectorAll("[data-oq]").forEach((e, i) => e.value = s.oq?.[i] ?? "");
+  OTHERS.forEach((_, i) => {
+    document.querySelector(`[data-op="${i}"]`).value = s.op?.[i] ?? "";
+    document.querySelector(`[data-oq="${i}"]`).value = s.oq?.[i] ?? "";
+  });
   document.querySelector("[data-pn]").value = s.pn ?? "";
 }
 
@@ -321,7 +336,7 @@ $("sync").onchange = async () => {
   try {
     const j = await api("POST", {
       action: "save", id: recordId, mommy, room: $("room").value.trim(), pkg: ctx.pname,
-      signup: $("signup").value, babies: $("babies").value,
+      signup: $("signup").value, babies: $("babies").value, contact: $("contact").value.trim(),
       upgrade: UPGRADES[$("upg").value][1] ? UPGRADES[$("upg").value][0] : "", pref: $("pref").value.trim(),
       items: ctx.itemsText, discount: ctx.disc, total: ctx.total, data: JSON.stringify(getState()),
       payments,
@@ -337,7 +352,7 @@ $("sync").onchange = async () => {
 };
 
 const openPanel = id => {
-  $("cfgPanel").hidden = id !== "cfgPanel"; $("recPanel").hidden = id !== "recPanel";
+  $("cfgPanel").hidden = id !== "cfgPanel"; $("recPanel").hidden = id !== "recPanel"; $("bulkPanel").hidden = id !== "bulkPanel";
   $("modal").style.display = "flex";
 };
 const closeModal = () => $("modal").style.display = "none";
@@ -366,16 +381,16 @@ function renderRecs() {
   const sum = k => list.reduce((s, x) => s + (+x.r[k] || 0), 0);
   $("recList").innerHTML = list.length ? `
     <div class="tbl"><table>
-      <thead><tr><th>Mother</th><th>Check-in</th><th>Room</th><th>Package</th>
+      <thead><tr><th>Mother</th><th>Contact</th><th>Check-in</th><th>Room</th><th>Package</th>
         <th class="n">Total package</th><th class="n">Deposit paid</th><th class="n">Balance</th><th>Status</th></tr></thead>
       <tbody>${list.map(({ r, i, checkin }) => { const [cls, txt] = badge(r); return `
         <tr class="rec" data-i="${i}">
           <td><b>${esc(r.mommy)}</b>${r.usage ? `<small>Treatments used: ${esc(r.usage)}</small>` : ""}</td>
-          <td>${fmtDate(checkin)}</td><td>${esc(r.room) || "–"}</td><td>${esc(r.pkg)}</td>
+          <td>${esc(r.contact || info(r).contact) || "–"}</td><td>${fmtDate(checkin)}</td><td>${esc(r.room) || "–"}</td><td>${esc(r.pkg)}</td>
           <td class="n">${rm(+r.total || 0).slice(3)}</td><td class="n">${rm(+r.deposit || 0).slice(3)}</td>
           <td class="n"><b>${rm(+r.balance || 0).slice(3)}</b></td><td><span class="st ${cls}">${txt}</span></td>
         </tr>`; }).join("")}</tbody>
-      <tfoot><tr><td colspan="4">${list.length} booking${list.length > 1 ? "s" : ""}</td>
+      <tfoot><tr><td colspan="5">${list.length} booking${list.length > 1 ? "s" : ""}</td>
         <td class="n">${rm(sum("total")).slice(3)}</td><td class="n">${rm(sum("deposit")).slice(3)}</td><td class="n">${rm(sum("balance")).slice(3)}</td><td></td></tr></tfoot>
     </table></div>` : `<p class="line sub">No bookings found.</p>`;
 }
@@ -389,10 +404,31 @@ $("recsBtn").onclick = async () => {
     records = (await api("GET", null, "action=list")).records; renderRecs();
   } catch (err) { $("recList").innerHTML = `<p style="color:#d33">${err.message}</p>`; }
 };
+$("bulkBtn").onclick = () => { $("bulkRes").textContent = ""; openPanel("bulkPanel"); };
+$("bulkBack").onclick = () => { openPanel("recPanel"); renderRecs(); };
+$("bulkGo").onclick = async () => {
+  const items = [], bad = [];
+  $("bulkText").value.split(/\r?\n/).forEach(line => {
+    line = line.trim(); if (!line) return;
+    const m = line.match(/^(.*?)[\t,;|]+\s*(\+?\d[\d\s\-()]{6,})$/) || line.match(/^(.*?)\s+(\+?\d[\d\-]{6,})$/);
+    if (m && m[1].trim()) items.push({ name: m[1].trim(), contact: m[2].trim() }); else bad.push(line);
+  });
+  if (!items.length) { $("bulkRes").style.color = "#d33"; $("bulkRes").textContent = "No valid lines found. Use: name, number"; return; }
+  $("bulkRes").style.color = ""; $("bulkRes").textContent = "Saving…";
+  try {
+    const j = await api("POST", { action: "contacts", items });
+    records = (await api("GET", null, "action=list")).records;
+    const miss = [...(j.notFound || []), ...bad];
+    $("bulkRes").innerHTML = `Added to <b>${j.updated}</b> booking${j.updated === 1 ? "" : "s"}.` +
+      (miss.length ? `<br><span style="color:#d33">Not matched (${miss.length}): ${miss.map(x => String(x).replace(/[&<>]/g, "")).join("; ")}</span>` : "");
+    if (!miss.length) $("bulkText").value = "";
+  } catch (err) { $("bulkRes").style.color = "#d33"; $("bulkRes").textContent = "Failed: " + err.message; }
+};
 $("recList").onclick = e => {
   const el = e.target.closest(".rec"); if (!el) return;
   const r = records[el.dataset.i];
   try { setState(JSON.parse(r.data)); } catch { return setStatus("Could not read that record", true); }
+  if (r.contact) $("contact").value = r.contact;
   recordId = r.id; paidSoFar = +r.paid || 0; depositSoFar = +r.deposit || 0; $("paid").value = "";
   $("dep").value = depositSoFar || ""; $("dep").readOnly = depositSoFar > 0; $("sync").checked = false;
   closeModal(); calc(); setStatus(`Loaded ${r.id} · enter payment, then tick Save to sheet`);

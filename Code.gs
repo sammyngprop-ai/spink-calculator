@@ -3,7 +3,8 @@
 
 const REC_HEAD = ['ID', 'Created', 'Updated', 'Mommy Name', 'Room No', 'Package', 'Items',
                   'Discount', 'Total', 'Deposit Paid', 'Paid', 'Balance', 'Status', 'Data',
-                  'Upgrade Room', 'Preferred Room', 'Sign Up Date', 'No. of Babies']; // kept after Data so older sheets keep their column positions
+                  'Upgrade Room', 'Preferred Room', 'Sign Up Date', 'No. of Babies', 'Contact No']; // kept after Data so older sheets keep their column positions
+const CONTACT_COL = REC_HEAD.indexOf('Contact No') + 1; // 1-based column of Contact No in Records
 const PAY_HEAD = ['Payment Date', 'Record ID', 'Mommy Name', 'Room No', 'Amount', 'Type', 'Collected By', 'Logged At'];
 
 // Mom Service Tracker tabs (all plain text so dates and numbers are stored exactly as sent)
@@ -95,6 +96,7 @@ function doPost(e) {
   lock.waitLock(20000);
   try {
     const b = JSON.parse(e.postData.contents);
+    if (b.action === 'contacts') return out_(contacts_(b));
     if (b.action === 'tracker_sync') return out_(trackerSync_(b));
     if (b.action !== 'save') return out_({ ok: false, error: 'Unknown action' });
     return out_(save_(b));
@@ -146,7 +148,7 @@ function doGet(e) {
     }
     const records = rows.reverse().slice(0, 300).map(r => ({
       id: r[0], mommy: r[3], room: r[4], pkg: r[5], total: r[8], deposit: r[9], paid: r[10],
-      balance: r[11], status: r[12], data: r[13], usage: usage[r[0]] || '',
+      balance: r[11], status: r[12], data: r[13], usage: usage[r[0]] || '', contact: r[CONTACT_COL - 1] ? String(r[CONTACT_COL - 1]) : '',
     }));
     return out_({ ok: true, records });
   } catch (err) {
@@ -178,15 +180,41 @@ function save_(b) {
   const status = balance <= 0 ? 'Paid' : paid > 0 ? 'Partial' : 'Confirmed';
   const now = new Date();
 
+  // contact numbers are plain text so a leading 0 is never dropped
+  recs.getRange(2, CONTACT_COL, Math.max(recs.getMaxRows() - 1, 1), 1).setNumberFormat('@');
   const ids = recs.getRange(1, 1, recs.getLastRow(), 1).getValues().map(r => r[0]);
   const idx = ids.indexOf(b.id);
   if (idx >= 1) {
     const row = idx + 1;
     const created = recs.getRange(row, 2).getValue();
+    const contact = b.contact ? String(b.contact) : String(recs.getRange(row, CONTACT_COL).getValue() || "");
     recs.getRange(row, 1, 1, REC_HEAD.length).setValues([[
-      b.id, created, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data, b.upgrade || "", b.pref || "", b.signup || "", b.babies || ""]]);
+      b.id, created, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data, b.upgrade || "", b.pref || "", b.signup || "", b.babies || "", contact]]);
   } else {
-    recs.appendRow([b.id, now, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data, b.upgrade || "", b.pref || "", b.signup || "", b.babies || ""]);
+    recs.appendRow([b.id, now, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data, b.upgrade || "", b.pref || "", b.signup || "", b.babies || "", String(b.contact || "")]);
   }
   return { ok: true, id: b.id, deposit, paid, balance, status };
+}
+
+// Bulk-add contact numbers: b.items = [{name, contact}]. Matches Records by Mommy Name (ignores case and extra spaces).
+function contacts_(b) {
+  const recs = sheet_('Records', REC_HEAD);
+  const last = recs.getLastRow();
+  const norm = x => String(x || '').toLowerCase().replace(/s+/g, ' ').trim();
+  const names = last > 1 ? recs.getRange(2, 4, last - 1, 1).getValues().map(r => norm(r[0])) : [];
+  const col = last > 1 ? recs.getRange(2, CONTACT_COL, last - 1, 1).getValues() : [];
+  let updated = 0;
+  const notFound = [];
+  (b.items || []).forEach(it => {
+    const key = norm(it.name);
+    let hit = false;
+    names.forEach((n, i) => { if (n === key && it.contact) { col[i][0] = String(it.contact); hit = true; updated++; } });
+    if (!hit) notFound.push(it.name);
+  });
+  if (last > 1) {
+    const rng = recs.getRange(2, CONTACT_COL, last - 1, 1);
+    rng.setNumberFormat('@');
+    rng.setValues(col);
+  }
+  return { ok: true, updated, notFound };
 }
