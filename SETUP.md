@@ -21,3 +21,6 @@ If you change `Code.gs` later: Deploy > Manage deployments > edit > New version.
 - Fill in the calculator, then tick **Save to sheet** (top-right of Summary).
 - When the mommy pays: tap **Records**, pick her, enter **Payment now**, date and **Collected by**, then tick **Save to sheet** again.
 - Editing anything after a save un-ticks the box, so nothing is updated until you tick it again.
+
+## Adding your own columns
+The Records and Payments tabs are read by **header name**, so you can insert or move columns (or add your own, such as notes) without breaking the calculator. Don't rename the existing headers (ID, Mommy Name, Room No, Package, Total, Deposit Paid, Paid, Balance, Contact No, and so on). If a header is missing, the script adds it at the end of the row. It never renames or reorders your columns.

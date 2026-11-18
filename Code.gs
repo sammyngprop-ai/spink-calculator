@@ -1,10 +1,14 @@
 // Spink Calculator – Google Sheet backend (Google Apps Script)
 // Paste into Extensions > Apps Script of your Google Sheet, then Deploy > Web app.
+//
+// Records and Payments are read and written by HEADER NAME, not column position, so you can
+// insert, move or add your own columns in those tabs without breaking the calculator.
+// Keep the header names below. The script only ever adds a missing header at the end; it never
+// renames or reorders your columns.
 
 const REC_HEAD = ['ID', 'Created', 'Updated', 'Mommy Name', 'Room No', 'Package', 'Items',
                   'Discount', 'Total', 'Deposit Paid', 'Paid', 'Balance', 'Status', 'Data',
-                  'Upgrade Room', 'Preferred Room', 'Sign Up Date', 'No. of Babies', 'Contact No']; // kept after Data so older sheets keep their column positions
-const CONTACT_COL = REC_HEAD.indexOf('Contact No') + 1; // 1-based column of Contact No in Records
+                  'Upgrade Room', 'Preferred Room', 'Sign Up Date', 'No. of Babies', 'Contact No'];
 const PAY_HEAD = ['Payment Date', 'Record ID', 'Mommy Name', 'Room No', 'Amount', 'Type', 'Collected By', 'Logged At'];
 
 // Mom Service Tracker tabs (all plain text so dates and numbers are stored exactly as sent)
@@ -43,6 +47,39 @@ function upsert_(sh, rows, uCol) {
   return existing;
 }
 
+// Opens (or creates) a tab and finds every column in `head` by its header text.
+// Returns { sh, idx, width }: idx[header] is the 0-based column, width is the number of header cells.
+// A missing header is added after the last used header; existing headers are left alone.
+function table_(name, head) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(name);
+  if (!sh) {
+    sh = ss.insertSheet(name);
+    sh.appendRow(head);
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, head.length).setFontWeight('bold');
+  }
+  let hdr = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0].map(h => String(h).trim());
+  const missing = head.filter(h => hdr.indexOf(h) < 0);
+  if (missing.length) {
+    let end = hdr.length;
+    while (end > 0 && hdr[end - 1] === '') end--;
+    if (sh.getMaxColumns() < end + missing.length) sh.insertColumnsAfter(sh.getMaxColumns(), end + missing.length - sh.getMaxColumns());
+    sh.getRange(1, end + 1, 1, missing.length).setValues([missing]).setFontWeight('bold');
+    hdr = hdr.slice(0, end).concat(missing);
+  }
+  const idx = {};
+  head.forEach(h => { idx[h] = hdr.indexOf(h); });
+  return { sh, idx, width: hdr.length };
+}
+
+// a new row as an array as wide as the header, with each value placed under its header
+function rowFrom_(t, obj) {
+  const row = new Array(t.width).fill('');
+  Object.keys(obj).forEach(h => { row[t.idx[h]] = obj[h]; });
+  return row;
+}
+
 function trackerSync_(b) {
   const str = v => String(v == null ? '' : v);
   const moms = upsert_(textSheet_('Mommies', MOM_HEAD),
@@ -57,10 +94,12 @@ function trackerSync_(b) {
     (b.infants || []).map(x => [x.id, x.name, x.babies, x.start, x.nights, x.room, x.note, x.u, x.deleted ? '1' : ''].map(str)), 7);
 
   const tz = Session.getScriptTimeZone();
-  const records = sheet_('Records', REC_HEAD).getDataRange().getValues().slice(1).map(r => ({
-    id: r[0],
-    created: r[1] instanceof Date ? Utilities.formatDate(r[1], tz, 'yyyy-MM-dd') : String(r[1]),
-    mommy: r[3], room: r[4], pkg: r[5], data: r[13], upgrade: r[14] || '', pref: r[15] || '',
+  const t = table_('Records', REC_HEAD);
+  const records = t.sh.getDataRange().getValues().slice(1).map(r => ({
+    id: r[t.idx['ID']],
+    created: r[t.idx['Created']] instanceof Date ? Utilities.formatDate(r[t.idx['Created']], tz, 'yyyy-MM-dd') : String(r[t.idx['Created']]),
+    mommy: r[t.idx['Mommy Name']], room: r[t.idx['Room No']], pkg: r[t.idx['Package']], data: r[t.idx['Data']],
+    upgrade: r[t.idx['Upgrade Room']] || '', pref: r[t.idx['Preferred Room']] || '',
   }));
   return {
     ok: true, records,
@@ -69,22 +108,6 @@ function trackerSync_(b) {
     moms: moms.map(r => ({ id: r[0], u: Number(r[1]), data: r[7] })),
     treatments: trs.map(r => ({ id: r[0], momId: r[1], service: r[3], option: r[4], date: r[5], time: r[6], note: r[7], u: Number(r[8]), deleted: r[9] === '1' })),
   };
-}
-
-function sheet_(name, head) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName(name);
-  if (!sh) {
-    sh = ss.insertSheet(name);
-    sh.appendRow(head);
-    sh.setFrozenRows(1);
-    sh.getRange(1, 1, 1, head.length).setFontWeight('bold');
-  } else if (sh.getMaxColumns() < head.length || sh.getRange(1, 1, 1, head.length).getValues()[0].join() !== head.join()) {
-    // older sheet: add any newly introduced columns and headers
-    if (sh.getMaxColumns() < head.length) sh.insertColumnsAfter(sh.getMaxColumns(), head.length - sh.getMaxColumns());
-    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');
-  }
-  return sh;
 }
 
 function out_(obj) {
@@ -112,9 +135,11 @@ function payments_(p) {
   const tz = Session.getScriptTimeZone();
   const from = String(p.from || ''), to = String(p.to || p.from || '');
   const day = v => v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v).slice(0, 10);
-  const payments = sheet_('Payments', PAY_HEAD).getDataRange().getValues().slice(1)
-    .filter(r => Number(r[4]) > 0)
-    .map(r => ({ date: day(r[0]), id: r[1], mommy: r[2], room: r[3], amount: Number(r[4]), type: r[5], by: r[6] }))
+  const t = table_('Payments', PAY_HEAD), c = t.idx;
+  const payments = t.sh.getDataRange().getValues().slice(1)
+    .filter(r => Number(r[c['Amount']]) > 0)
+    .map(r => ({ date: day(r[c['Payment Date']]), id: r[c['Record ID']], mommy: r[c['Mommy Name']], room: r[c['Room No']],
+                 amount: Number(r[c['Amount']]), type: r[c['Type']], by: r[c['Collected By']] }))
     .filter(x => (!from || x.date >= from) && (!to || x.date <= to));
   return { ok: true, payments };
 }
@@ -139,7 +164,8 @@ function doGet(e) {
   try {
     if (e && e.parameter && e.parameter.action === 'mommies') return out_(mommies_());
     if (e && e.parameter && e.parameter.action === 'payments') return out_(payments_(e.parameter));
-    const rows = sheet_('Records', REC_HEAD).getDataRange().getValues().slice(1);
+    const t = table_('Records', REC_HEAD), c = t.idx;
+    const rows = t.sh.getDataRange().getValues().slice(1);
     // treatment usage written by the Mom Service Tracker (tab "Mommies"), e.g. "Massage 2/5 · Facial 0/1"
     const usage = {};
     const ms = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Mommies');
@@ -147,8 +173,10 @@ function doGet(e) {
       ms.getRange(2, 1, ms.getLastRow() - 1, MOM_HEAD.length).getValues().forEach(r => { usage[r[0]] = r[6]; });
     }
     const records = rows.reverse().slice(0, 300).map(r => ({
-      id: r[0], mommy: r[3], room: r[4], pkg: r[5], total: r[8], deposit: r[9], paid: r[10],
-      balance: r[11], status: r[12], data: r[13], usage: usage[r[0]] || '', contact: r[CONTACT_COL - 1] ? String(r[CONTACT_COL - 1]) : '',
+      id: r[c['ID']], mommy: r[c['Mommy Name']], room: r[c['Room No']], pkg: r[c['Package']],
+      total: r[c['Total']], deposit: r[c['Deposit Paid']], paid: r[c['Paid']], balance: r[c['Balance']],
+      status: r[c['Status']], data: r[c['Data']], usage: usage[r[c['ID']]] || '',
+      contact: r[c['Contact No']] ? String(r[c['Contact No']]) : '',
     }));
     return out_({ ok: true, records });
   } catch (err) {
@@ -157,22 +185,25 @@ function doGet(e) {
 }
 
 function save_(b) {
-  const pays = sheet_('Payments', PAY_HEAD);
-  const recs = sheet_('Records', REC_HEAD);
+  const pt = table_('Payments', PAY_HEAD), pc = pt.idx;
+  const rt = table_('Records', REC_HEAD), rc = rt.idx;
 
   // each payment is typed 'Deposit' or 'Payment' by the calculator
   (b.payments || []).forEach(p => {
     if (p.amount > 0) {
-      pays.appendRow([String(p.date), b.id, b.mommy, b.room, Number(p.amount), p.type, p.by, new Date()]);
+      pt.sh.appendRow(rowFrom_(pt, {
+        'Payment Date': String(p.date), 'Record ID': b.id, 'Mommy Name': b.mommy, 'Room No': b.room,
+        'Amount': Number(p.amount), 'Type': p.type, 'Collected By': p.by, 'Logged At': new Date(),
+      }));
     }
   });
 
   // deposit = the Deposit payment; paid = sum of all of this record's payments
   let paid = 0, deposit = 0;
-  pays.getDataRange().getValues().slice(1).forEach(r => {
-    if (r[1] !== b.id) return;
-    paid += Number(r[4]) || 0;
-    if (r[5] === 'Deposit') deposit += Number(r[4]) || 0;
+  pt.sh.getDataRange().getValues().slice(1).forEach(r => {
+    if (r[pc['Record ID']] !== b.id) return;
+    paid += Number(r[pc['Amount']]) || 0;
+    if (r[pc['Type']] === 'Deposit') deposit += Number(r[pc['Amount']]) || 0;
   });
 
   const total = Number(b.total) || 0;
@@ -181,28 +212,40 @@ function save_(b) {
   const now = new Date();
 
   // contact numbers are plain text so a leading 0 is never dropped
-  recs.getRange(2, CONTACT_COL, Math.max(recs.getMaxRows() - 1, 1), 1).setNumberFormat('@');
-  const ids = recs.getRange(1, 1, recs.getLastRow(), 1).getValues().map(r => r[0]);
-  const idx = ids.indexOf(b.id);
-  if (idx >= 1) {
-    const row = idx + 1;
-    const created = recs.getRange(row, 2).getValue();
-    const contact = b.contact ? String(b.contact) : String(recs.getRange(row, CONTACT_COL).getValue() || "");
-    recs.getRange(row, 1, 1, REC_HEAD.length).setValues([[
-      b.id, created, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data, b.upgrade || "", b.pref || "", b.signup || "", b.babies || "", contact]]);
+  rt.sh.getRange(2, rc['Contact No'] + 1, Math.max(rt.sh.getMaxRows() - 1, 1), 1).setNumberFormat('@');
+
+  const fields = {
+    'Updated': now, 'Mommy Name': b.mommy, 'Room No': b.room, 'Package': b.pkg, 'Items': b.items,
+    'Discount': Number(b.discount) || 0, 'Total': total, 'Deposit Paid': deposit, 'Paid': paid, 'Balance': balance,
+    'Status': status, 'Data': b.data, 'Upgrade Room': b.upgrade || '', 'Preferred Room': b.pref || '',
+    'Sign Up Date': b.signup || '', 'No. of Babies': b.babies || '',
+  };
+  if (b.contact) fields['Contact No'] = String(b.contact); // an empty contact never wipes a number already in the sheet
+
+  const last = rt.sh.getLastRow();
+  const ids = last > 1 ? rt.sh.getRange(2, rc['ID'] + 1, last - 1, 1).getValues().map(r => r[0]) : [];
+  const at = ids.indexOf(b.id);
+  if (at >= 0) {
+    const row = at + 2;
+    const rng = rt.sh.getRange(row, 1, 1, rt.width);
+    const vals = rng.getValues()[0], formulas = rng.getFormulas()[0];
+    const out = vals.map((v, i) => formulas[i] ? formulas[i] : v); // keep any formulas in your own columns
+    Object.keys(fields).forEach(h => { out[rc[h]] = fields[h]; });
+    rng.setValues([out]);
   } else {
-    recs.appendRow([b.id, now, now, b.mommy, b.room, b.pkg, b.items, Number(b.discount) || 0, total, deposit, paid, balance, status, b.data, b.upgrade || "", b.pref || "", b.signup || "", b.babies || "", String(b.contact || "")]);
+    rt.sh.appendRow(rowFrom_(rt, Object.assign({ 'ID': b.id, 'Created': now, 'Contact No': String(b.contact || '') }, fields)));
   }
   return { ok: true, id: b.id, deposit, paid, balance, status };
 }
 
 // Bulk-add contact numbers: b.items = [{name, contact}]. Matches Records by Mommy Name (ignores case and extra spaces).
 function contacts_(b) {
-  const recs = sheet_('Records', REC_HEAD);
-  const last = recs.getLastRow();
-  const norm = x => String(x || '').toLowerCase().replace(/s+/g, ' ').trim();
-  const names = last > 1 ? recs.getRange(2, 4, last - 1, 1).getValues().map(r => norm(r[0])) : [];
-  const col = last > 1 ? recs.getRange(2, CONTACT_COL, last - 1, 1).getValues() : [];
+  const t = table_('Records', REC_HEAD), c = t.idx;
+  const last = t.sh.getLastRow();
+  const norm = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const names = last > 1 ? t.sh.getRange(2, c['Mommy Name'] + 1, last - 1, 1).getValues().map(r => norm(r[0])) : [];
+  const rng = last > 1 ? t.sh.getRange(2, c['Contact No'] + 1, last - 1, 1) : null;
+  const col = rng ? rng.getValues() : [];
   let updated = 0;
   const notFound = [];
   (b.items || []).forEach(it => {
@@ -211,8 +254,7 @@ function contacts_(b) {
     names.forEach((n, i) => { if (n === key && it.contact) { col[i][0] = String(it.contact); hit = true; updated++; } });
     if (!hit) notFound.push(it.name);
   });
-  if (last > 1) {
-    const rng = recs.getRange(2, CONTACT_COL, last - 1, 1);
+  if (rng) {
     rng.setNumberFormat('@');
     rng.setValues(col);
   }
